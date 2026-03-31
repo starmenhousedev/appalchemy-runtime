@@ -1,1 +1,7 @@
-{}
+{
+  "ignore_dirs": [
+    ".gradle-user-home",
+    ".gradle",
+    "android/.gradle"
+  ]
+}
