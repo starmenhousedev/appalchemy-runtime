@@ -3,8 +3,11 @@ import type { ApiResponse, User, UserRole, RolePermissionMap } from '../../types
 
 export const usersApi = {
   async list() {
-    const { data } = await apiClient.get<ApiResponse<User[]>>('/users');
-    return data.data;
+    const { data } = await apiClient.get<ApiResponse<any>>('/users');
+    const payload = data?.data;
+    if (Array.isArray(payload)) return payload as User[];
+    if (payload && Array.isArray(payload.users)) return payload.users as User[];
+    return [] as User[];
   },
 
   async create(user: {

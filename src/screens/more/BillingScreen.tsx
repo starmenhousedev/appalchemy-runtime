@@ -1,22 +1,20 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
-  Alert,
-} from 'react-native';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert, Modal, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { billingApi } from '../../api';
 import { useStore } from '../../store';
-import { colors, spacing, typography, shadows, borderRadius } from '../../theme';
-import { Button } from '../../components/common/Button';
-import { LoadingOverlay } from '../../components/common/LoadingOverlay';
+import { useTheme } from '../../theme';
+import { AppHeader } from '../../components/common/AppHeader';
+import { ActionButton } from '../../components/common/ActionButton';
+import { StatusBadge } from '../../components/common/StatusBadge';
+import { SectionCard } from '../../components/common/SectionCard';
+import { LoadingState } from '../../components/common/LoadingState';
+import { EmptyState } from '../../components/common/EmptyState';
+import { Input } from '../../components/common/Input';
 import type { Plan, BillingRecord } from '../../types';
 
 export function BillingScreen({ navigation }: { navigation: any }) {
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
   const showToast = useStore(s => s.showToast);
   const [loading, setLoading] = useState(true);
@@ -30,12 +28,12 @@ export function BillingScreen({ navigation }: { navigation: any }) {
     try {
       const [planData, plansData, invoiceData] = await Promise.all([
         billingApi.getCurrentPlan().catch(() => null),
-        billingApi.listPlans(),
+        billingApi.listPlans().catch(() => []),
         billingApi.getInvoices().catch(() => []),
       ]);
-      setCurrentPlan(planData);
-      setPlans(plansData);
-      setInvoices(invoiceData);
+      setCurrentPlan(planData ?? null);
+      setPlans(Array.isArray(plansData) ? plansData : []);
+      setInvoices(Array.isArray(invoiceData) ? invoiceData : []);
       if (planData?.billing_cycle) setBillingCycle(planData.billing_cycle);
     } catch {
       showToast('error', 'Failed to load billing info');
@@ -43,33 +41,77 @@ export function BillingScreen({ navigation }: { navigation: any }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+  const openConfirmation = (url?: string | null) => {
+    if (!url) return;
+    Linking.openURL(url).catch(() => showToast('error', 'Failed to open Shopify confirmation'));
+  };
+
   const handleSubscribe = (plan: Plan) => {
     const price = billingCycle === 'monthly' ? plan.monthly_price : plan.annual_price;
+    const isUpgrade = !!currentPlan && currentPlan.status === 'active' && currentPlan.plan_id !== plan.id;
     Alert.alert(
-      'Subscribe',
-      `Subscribe to ${plan.name} for $${price}/${billingCycle === 'monthly' ? 'mo' : 'yr'}?`,
+      isUpgrade ? 'Switch plan' : 'Subscribe',
+      `${isUpgrade ? 'Switch to' : 'Subscribe to'} ${plan.name} for $${price}/${billingCycle === 'monthly' ? 'mo' : 'yr'}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Subscribe',
+          text: isUpgrade ? 'Switch' : 'Subscribe',
           onPress: async () => {
             try {
-              await billingApi.subscribe(plan.id, billingCycle);
+              const result = isUpgrade
+                ? await billingApi.upgrade(plan.id, billingCycle)
+                : await billingApi.subscribe(plan.id, billingCycle);
               fetchData();
-              showToast('success', `Subscribed to ${plan.name}`);
-            } catch {
-              showToast('error', 'Failed to subscribe');
+              if (result?.confirmation_url) {
+                openConfirmation(result.confirmation_url);
+                showToast('info', 'Approve the charge in Shopify, then return to confirm.');
+              } else {
+                showToast('success', isUpgrade ? `Switched to ${plan.name}` : `Subscribed to ${plan.name}`);
+              }
+            } catch (err: any) {
+              const msg =
+                err?.response?.data?.message ||
+                err?.message ||
+                (isUpgrade ? 'Failed to switch plan' : 'Failed to subscribe');
+              showToast('error', msg);
             }
           },
         },
       ],
     );
+  };
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [chargeId, setChargeId] = useState('');
+  const [confirming, setConfirming] = useState(false);
+
+  const handleConfirmCharge = async () => {
+    const id = chargeId.trim();
+    if (!id) {
+      showToast('error', 'Charge ID is required');
+      return;
+    }
+    setConfirming(true);
+    try {
+      const updated = await billingApi.confirmCharge(id);
+      setCurrentPlan(updated ?? null);
+      setChargeId('');
+      setConfirmOpen(false);
+      fetchData();
+      showToast('success', 'Charge confirmed');
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message || err?.message || 'Failed to confirm charge';
+      showToast('error', msg);
+    } finally {
+      setConfirming(false);
+    }
   };
 
   const handleCancel = () => {
@@ -83,190 +125,243 @@ export function BillingScreen({ navigation }: { navigation: any }) {
             await billingApi.cancel();
             fetchData();
             showToast('success', 'Plan cancelled');
-          } catch {
-            showToast('error', 'Failed to cancel plan');
+          } catch (err: any) {
+            const msg =
+              err?.response?.data?.message || err?.message || 'Failed to cancel plan';
+            showToast('error', msg);
           }
         },
       },
     ]);
   };
 
-  if (loading) return <LoadingOverlay fullScreen />;
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1, backgroundColor: theme.colors.background },
+        content: { padding: theme.spacing.lg, paddingBottom: theme.spacing.xxxl + insets.bottom, gap: theme.spacing.md },
+        currentPlan: {
+          backgroundColor: theme.colors.primary,
+          borderRadius: theme.borderRadius.xl,
+          padding: theme.spacing.xl,
+          alignItems: 'center',
+          ...theme.shadows.md,
+        },
+        currentPlanLabel: { ...theme.typography.captionMedium, color: 'rgba(255,255,255,0.85)', textTransform: 'uppercase', letterSpacing: 0.5 },
+        currentPlanName: { ...theme.typography.h2, color: '#fff', marginTop: theme.spacing.xs },
+        currentPlanPrice: { ...theme.typography.body, color: 'rgba(255,255,255,0.9)', marginTop: theme.spacing.xs },
+        cancelText: { ...theme.typography.captionMedium, color: 'rgba(255,255,255,0.8)', marginTop: theme.spacing.md, textDecorationLine: 'underline' },
+        cycleToggle: {
+          flexDirection: 'row',
+          backgroundColor: theme.colors.surface,
+          borderRadius: theme.borderRadius.md,
+          padding: 3,
+          borderColor: theme.colors.borderLight,
+          borderWidth: StyleSheet.hairlineWidth,
+        },
+        cycleBtn: { flex: 1, paddingVertical: theme.spacing.sm, borderRadius: theme.borderRadius.sm, alignItems: 'center' },
+        cycleBtnActive: { backgroundColor: theme.colors.primary },
+        cycleBtnText: { ...theme.typography.captionMedium, color: theme.colors.textSecondary },
+        cycleBtnTextActive: { color: '#fff' },
+        planCard: {
+          backgroundColor: theme.colors.surface,
+          borderRadius: theme.borderRadius.lg,
+          padding: theme.spacing.lg,
+          ...theme.shadows.sm,
+          borderWidth: 1.5,
+          borderColor: theme.colors.borderLight,
+        },
+        planCardCurrent: { borderColor: theme.colors.primary },
+        planHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: theme.spacing.sm },
+        planName: { ...theme.typography.h4, color: theme.colors.text },
+        planPrice: { ...theme.typography.h3, color: theme.colors.text },
+        planPeriod: { ...theme.typography.caption, color: theme.colors.textTertiary },
+        featureText: { ...theme.typography.caption, color: theme.colors.textSecondary, lineHeight: 20 },
+        invoiceRow: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: theme.spacing.md,
+          paddingVertical: theme.spacing.sm,
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: theme.colors.divider,
+        },
+        invoicePlan: { ...theme.typography.captionMedium, color: theme.colors.text },
+        invoiceDate: { ...theme.typography.small, color: theme.colors.textTertiary },
+        invoiceAmount: { ...theme.typography.bodyMedium, color: theme.colors.text },
+      }),
+    [theme, insets.bottom],
+  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Button title="Back" onPress={() => navigation.goBack()} variant="ghost" size="sm" />
-        <Text style={styles.headerTitle}>Billing</Text>
-        <View style={{ width: 60 }} />
-      </View>
-
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} colors={[colors.primary]} />}>
-
-        {/* Current Plan */}
-        {currentPlan && (
-          <View style={styles.currentPlanCard}>
-            <Text style={styles.currentPlanLabel}>Current Plan</Text>
-            <Text style={styles.currentPlanName}>{currentPlan.plan_name}</Text>
-            <Text style={styles.currentPlanPrice}>
-              ${currentPlan.price}/{currentPlan.billing_cycle === 'monthly' ? 'mo' : 'yr'}
-            </Text>
-            <View style={[styles.statusBadge, {
-              backgroundColor: currentPlan.status === 'active' ? colors.successLight : colors.error + '15',
-            }]}>
-              <Text style={[styles.statusText, {
-                color: currentPlan.status === 'active' ? colors.success : colors.error,
-              }]}>
-                {currentPlan.status}
+      <AppHeader title="Billing" onBack={() => navigation.goBack()} />
+      {loading ? (
+        <LoadingState message="Loading billing info…" />
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                fetchData();
+              }}
+              colors={[theme.colors.primary]}
+              tintColor={theme.colors.primary}
+            />
+          }>
+          {currentPlan && (
+            <View style={styles.currentPlan}>
+              <Text style={styles.currentPlanLabel}>Current Plan</Text>
+              <Text style={styles.currentPlanName}>{currentPlan.plan_name}</Text>
+              <Text style={styles.currentPlanPrice}>
+                ${currentPlan.price}/{currentPlan.billing_cycle === 'monthly' ? 'mo' : 'yr'}
               </Text>
-            </View>
-            {currentPlan.status === 'active' && (
-              <TouchableOpacity onPress={handleCancel} style={styles.cancelBtn}>
-                <Text style={styles.cancelBtnText}>Cancel Plan</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
-        {/* Billing Cycle Toggle */}
-        <View style={styles.cycleToggle}>
-          {(['monthly', 'annual'] as const).map(c => (
-            <TouchableOpacity
-              key={c}
-              style={[styles.cycleBtn, billingCycle === c && styles.cycleBtnActive]}
-              onPress={() => setBillingCycle(c)}>
-              <Text style={[styles.cycleBtnText, billingCycle === c && styles.cycleBtnTextActive]}>
-                {c === 'monthly' ? 'Monthly' : 'Annual (Save 20%)'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Plans */}
-        <Text style={styles.sectionTitle}>AVAILABLE PLANS</Text>
-        {plans.map(plan => {
-          const price = billingCycle === 'monthly' ? plan.monthly_price : plan.annual_price;
-          const isCurrent = currentPlan?.plan_id === plan.id && currentPlan?.status === 'active';
-
-          return (
-            <View key={plan.id} style={[styles.planCard, isCurrent && styles.planCardCurrent]}>
-              <View style={styles.planHeader}>
-                <Text style={styles.planName}>{plan.name}</Text>
-                <Text style={styles.planPrice}>
-                  ${price}<Text style={styles.planPeriod}>/{billingCycle === 'monthly' ? 'mo' : 'yr'}</Text>
-                </Text>
-              </View>
-              <View style={styles.featureList}>
-                {plan.features.map((f, i) => (
-                  <Text key={i} style={styles.featureText}>  {f}</Text>
-                ))}
-              </View>
-              {!isCurrent && (
-                <Button
-                  title={currentPlan ? 'Switch Plan' : 'Subscribe'}
-                  onPress={() => handleSubscribe(plan)}
-                  variant={isCurrent ? 'secondary' : 'primary'}
-                  size="sm"
-                  style={styles.planBtn}
+              <View style={{ marginTop: theme.spacing.md }}>
+                <StatusBadge
+                  label={currentPlan.status}
+                  tone={currentPlan.status === 'active' ? 'success' : 'error'}
                 />
-              )}
-              {isCurrent && (
-                <Text style={styles.currentLabel}>Current Plan</Text>
+              </View>
+              {currentPlan.status === 'active' ? (
+                <TouchableOpacity onPress={handleCancel}>
+                  <Text style={styles.cancelText}>Cancel plan</Text>
+                </TouchableOpacity>
+              ) : null}
+              {currentPlan.status === 'pending' && currentPlan.shopify_charge_id ? (
+                <TouchableOpacity onPress={() => {
+                  setChargeId(currentPlan.shopify_charge_id || '');
+                  setConfirmOpen(true);
+                }}>
+                  <Text style={styles.cancelText}>Confirm charge in Shopify</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          )}
+
+          <ActionButton
+            label="I have a charge ID to confirm"
+            variant="ghost"
+            size="sm"
+            onPress={() => setConfirmOpen(true)}
+          />
+
+          <View style={styles.cycleToggle}>
+            {(['monthly', 'annual'] as const).map(c => (
+              <TouchableOpacity
+                key={c}
+                style={[styles.cycleBtn, billingCycle === c && styles.cycleBtnActive]}
+                onPress={() => setBillingCycle(c)}>
+                <Text style={[styles.cycleBtnText, billingCycle === c && styles.cycleBtnTextActive]}>
+                  {c === 'monthly' ? 'Monthly' : 'Annual · Save 20%'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <SectionCard title="Available plans" padded={false}>
+            <View style={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.lg, gap: theme.spacing.sm }}>
+              {plans.length === 0 ? (
+                <EmptyState icon="$" title="No plans available" compact />
+              ) : (
+                plans.map(plan => {
+                  const price = billingCycle === 'monthly' ? plan.monthly_price : plan.annual_price;
+                  const isCurrent = currentPlan?.plan_id === plan.id && currentPlan?.status === 'active';
+                  return (
+                    <View key={plan.id} style={[styles.planCard, isCurrent && styles.planCardCurrent]}>
+                      <View style={styles.planHeader}>
+                        <Text style={styles.planName}>{plan.name}</Text>
+                        <Text style={styles.planPrice}>
+                          ${price}
+                          <Text style={styles.planPeriod}>/{billingCycle === 'monthly' ? 'mo' : 'yr'}</Text>
+                        </Text>
+                      </View>
+                      <View style={{ gap: 4, marginBottom: theme.spacing.md }}>
+                        {plan.features.map((f, i) => (
+                          <Text key={i} style={styles.featureText}>
+                            ✓ {f}
+                          </Text>
+                        ))}
+                      </View>
+                      {isCurrent ? (
+                        <StatusBadge label="Current plan" tone="primary" dot />
+                      ) : (
+                        <ActionButton
+                          label={currentPlan ? 'Switch plan' : 'Subscribe'}
+                          onPress={() => handleSubscribe(plan)}
+                          variant="primary"
+                          size="md"
+                          fullWidth
+                        />
+                      )}
+                    </View>
+                  );
+                })
               )}
             </View>
-          );
-        })}
+          </SectionCard>
 
-        {/* Invoices */}
-        {invoices.length > 0 && (
-          <>
-            <Text style={styles.sectionTitle}>BILLING HISTORY</Text>
-            {invoices.map(inv => (
-              <View key={inv.id} style={styles.invoiceRow}>
-                <View style={styles.invoiceInfo}>
-                  <Text style={styles.invoicePlan}>{inv.plan_name}</Text>
-                  <Text style={styles.invoiceDate}>
-                    {new Date(inv.createdAt).toLocaleDateString()}
-                  </Text>
-                </View>
-                <Text style={styles.invoiceAmount}>${inv.price}</Text>
-                <View style={[styles.invoiceStatus, {
-                  backgroundColor: inv.status === 'active' ? colors.successLight : colors.surfaceSecondary,
-                }]}>
-                  <Text style={[styles.invoiceStatusText, {
-                    color: inv.status === 'active' ? colors.success : colors.textTertiary,
-                  }]}>
-                    {inv.status}
-                  </Text>
+          <Modal
+            visible={confirmOpen}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setConfirmOpen(false)}>
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: theme.colors.overlay,
+                justifyContent: 'center',
+                padding: theme.spacing.lg,
+              }}>
+              <View
+                style={{
+                  backgroundColor: theme.colors.surface,
+                  borderRadius: theme.borderRadius.lg,
+                  padding: theme.spacing.lg,
+                }}>
+                <Text style={[theme.typography.h4, { color: theme.colors.text, marginBottom: theme.spacing.xs }]}>
+                  Confirm Shopify charge
+                </Text>
+                <Text style={[theme.typography.caption, { color: theme.colors.textSecondary, marginBottom: theme.spacing.md }]}>
+                  After approving the charge in Shopify, paste the charge ID here to activate your plan.
+                </Text>
+                <Input
+                  label="Charge ID"
+                  value={chargeId}
+                  onChangeText={setChargeId}
+                  placeholder="gid://shopify/AppSubscription/..."
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: theme.spacing.sm, marginTop: theme.spacing.sm }}>
+                  <ActionButton label="Cancel" variant="ghost" onPress={() => setConfirmOpen(false)} />
+                  <ActionButton label="Confirm" loading={confirming} onPress={handleConfirmCharge} />
                 </View>
               </View>
-            ))}
-          </>
-        )}
+            </View>
+          </Modal>
 
-        <View style={{ height: spacing.xxxl }} />
-      </ScrollView>
+          <SectionCard title="Billing history" padded={false}>
+            <View style={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.md }}>
+              {invoices.length === 0 ? (
+                <EmptyState icon="◇" title="No invoices yet" compact />
+              ) : (
+                invoices.map(inv => (
+                  <View key={inv.id} style={styles.invoiceRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.invoicePlan}>{inv.plan_name}</Text>
+                      <Text style={styles.invoiceDate}>{new Date(inv.createdAt).toLocaleDateString()}</Text>
+                    </View>
+                    <Text style={styles.invoiceAmount}>${inv.price}</Text>
+                    <StatusBadge label={inv.status} tone={inv.status === 'active' ? 'success' : 'neutral'} />
+                  </View>
+                ))
+              )}
+            </View>
+          </SectionCard>
+        </ScrollView>
+      )}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
-    borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface,
-  },
-  headerTitle: { ...typography.h4, color: colors.text },
-  content: { padding: spacing.lg, paddingBottom: spacing.xxxl },
-  currentPlanCard: {
-    backgroundColor: colors.primary, borderRadius: borderRadius.lg,
-    padding: spacing.xl, alignItems: 'center', marginBottom: spacing.lg,
-  },
-  currentPlanLabel: { ...typography.captionMedium, color: 'rgba(255,255,255,0.7)' },
-  currentPlanName: { ...typography.h2, color: '#fff', marginTop: spacing.xs },
-  currentPlanPrice: { ...typography.body, color: 'rgba(255,255,255,0.9)', marginTop: spacing.xs },
-  statusBadge: { paddingHorizontal: spacing.md, paddingVertical: 3, borderRadius: borderRadius.sm, marginTop: spacing.md },
-  statusText: { ...typography.small, fontWeight: '600', textTransform: 'capitalize' },
-  cancelBtn: { marginTop: spacing.md },
-  cancelBtnText: { ...typography.captionMedium, color: 'rgba(255,255,255,0.7)' },
-  cycleToggle: {
-    flexDirection: 'row', backgroundColor: colors.surface, borderRadius: borderRadius.md,
-    padding: 3, marginBottom: spacing.lg, ...shadows.sm,
-  },
-  cycleBtn: { flex: 1, paddingVertical: spacing.sm, borderRadius: borderRadius.sm, alignItems: 'center' },
-  cycleBtnActive: { backgroundColor: colors.primary },
-  cycleBtnText: { ...typography.captionMedium, color: colors.textSecondary },
-  cycleBtnTextActive: { color: '#fff' },
-  sectionTitle: {
-    ...typography.captionMedium, color: colors.textSecondary,
-    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: spacing.md, marginTop: spacing.md,
-  },
-  planCard: {
-    backgroundColor: colors.surface, borderRadius: borderRadius.lg,
-    padding: spacing.lg, marginBottom: spacing.md, ...shadows.sm,
-    borderWidth: 1.5, borderColor: 'transparent',
-  },
-  planCardCurrent: { borderColor: colors.primary },
-  planHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: spacing.md },
-  planName: { ...typography.h4, color: colors.text },
-  planPrice: { ...typography.h3, color: colors.text },
-  planPeriod: { ...typography.caption, color: colors.textTertiary },
-  featureList: { gap: spacing.xs, marginBottom: spacing.md },
-  featureText: { ...typography.caption, color: colors.textSecondary, lineHeight: 20 },
-  planBtn: { alignSelf: 'stretch' },
-  currentLabel: { ...typography.captionMedium, color: colors.primary, textAlign: 'center' },
-  invoiceRow: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    backgroundColor: colors.surface, borderRadius: borderRadius.md,
-    padding: spacing.md, marginBottom: spacing.xs,
-  },
-  invoiceInfo: { flex: 1 },
-  invoicePlan: { ...typography.captionMedium, color: colors.text },
-  invoiceDate: { ...typography.small, color: colors.textTertiary },
-  invoiceAmount: { ...typography.bodyMedium, color: colors.text },
-  invoiceStatus: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: borderRadius.sm },
-  invoiceStatusText: { ...typography.small, fontWeight: '600', textTransform: 'capitalize' },
-});

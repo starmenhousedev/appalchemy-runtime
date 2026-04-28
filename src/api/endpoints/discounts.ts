@@ -3,11 +3,14 @@ import type { ApiResponse, Discount } from '../../types';
 
 export const discountsApi = {
   async list(status?: 'active' | 'inactive') {
-    const { data } = await apiClient.get<ApiResponse<Discount[]>>(
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/discounts',
       { params: status ? { status } : undefined },
     );
-    return data.data;
+    const payload = data?.data;
+    if (Array.isArray(payload)) return payload as Discount[];
+    if (payload && Array.isArray(payload.discounts)) return payload.discounts as Discount[];
+    return [] as Discount[];
   },
 
   async create(discount: Omit<Discount, 'id' | 'shop_id' | 'createdAt' | 'updatedAt'>) {

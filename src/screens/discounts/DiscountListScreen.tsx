@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,127 +10,75 @@ import {
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { DrawerNavigationProp } from '@react-navigation/drawer';
 import { discountsApi } from '../../api';
 import { useStore } from '../../store';
-import { colors, spacing, typography, shadows, borderRadius } from '../../theme';
-import { Button } from '../../components/common/Button';
+import { useTheme } from '../../theme';
+import { AppHeader } from '../../components/common/AppHeader';
+import { ActionButton } from '../../components/common/ActionButton';
+import { StatusBadge } from '../../components/common/StatusBadge';
+import { SearchBar } from '../../components/common/SearchBar';
+import { FilterChips } from '../../components/common/FilterChips';
+import { EmptyState } from '../../components/common/EmptyState';
+import { LoadingState } from '../../components/common/LoadingState';
 import { DISCOUNT_TYPES } from '../../utils/constants';
 import type { Discount } from '../../types';
+import type { DrawerParamList } from '../../navigation/types';
 
-function DiscountCard({
-  discount,
-  onToggle,
-  onEdit,
-  onClone,
-  onDelete,
-}: {
-  discount: Discount;
-  onToggle: () => void;
-  onEdit: () => void;
-  onClone: () => void;
-  onDelete: () => void;
-}) {
-  const typeLabel =
-    DISCOUNT_TYPES.find(t => t.value === discount.type)?.label || discount.type;
-
-  return (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={styles.cardTitleRow}>
-          <Text style={styles.cardTitle}>{discount.title}</Text>
-          <Switch
-            value={discount.is_active}
-            onValueChange={onToggle}
-            trackColor={{ false: colors.border, true: colors.primaryLight }}
-            thumbColor={discount.is_active ? colors.primary : colors.textTertiary}
-          />
-        </View>
-        <View style={styles.badges}>
-          <View style={styles.typeBadge}>
-            <Text style={styles.typeBadgeText}>{typeLabel}</Text>
-          </View>
-          <View
-            style={[
-              styles.statusBadge,
-              {
-                backgroundColor: discount.is_active
-                  ? colors.successLight
-                  : colors.surfaceSecondary,
-              },
-            ]}>
-            <Text
-              style={[
-                styles.statusBadgeText,
-                {
-                  color: discount.is_active ? colors.success : colors.textTertiary,
-                },
-              ]}>
-              {discount.is_active ? 'Active' : 'Inactive'}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {discount.coupon_code && (
-        <View style={styles.couponRow}>
-          <Text style={styles.couponLabel}>Code: </Text>
-          <Text style={styles.couponCode}>{discount.coupon_code}</Text>
-        </View>
-      )}
-
-      <Text style={styles.discountValue}>
-        {discount.discount_type === 'percentage'
-          ? `${discount.discount_value}% off`
-          : `$${discount.discount_value} off`}
-      </Text>
-
-      <View style={styles.cardActions}>
-        <TouchableOpacity style={styles.actionButton} onPress={onEdit}>
-          <Text style={styles.actionText}>Edit</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={onClone}>
-          <Text style={styles.actionText}>Clone</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={onDelete}>
-          <Text style={[styles.actionText, { color: colors.error }]}>
-            Delete
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
+type Filter = 'all' | 'active' | 'inactive';
 
 export function DiscountListScreen({ navigation }: { navigation: any }) {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const showToast = useStore(s => s.showToast);
+  const drawerNav = navigation.getParent() as DrawerNavigationProp<DrawerParamList> | undefined;
+
   const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
-  const showToast = useStore(s => s.showToast);
-  const insets = useSafeAreaInsets();
+  const [filter, setFilter] = useState<Filter>('all');
+  const [search, setSearch] = useState('');
 
   const fetchDiscounts = useCallback(async () => {
     setLoading(true);
     try {
       const status = filter === 'all' ? undefined : filter;
       const data = await discountsApi.list(status as 'active' | 'inactive' | undefined);
-      setDiscounts(data);
+      setDiscounts(Array.isArray(data) ? data : []);
     } catch {
+      setDiscounts([]);
       showToast('error', 'Failed to load discounts');
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, showToast]);
 
   useEffect(() => {
     fetchDiscounts();
   }, [fetchDiscounts]);
 
+  const filtered = useMemo(() => {
+    if (!search.trim()) return discounts;
+    const q = search.toLowerCase();
+    return discounts.filter(
+      d =>
+        (d.title ?? '').toLowerCase().includes(q) ||
+        (d.coupon_code ?? '').toLowerCase().includes(q),
+    );
+  }, [discounts, search]);
+
+  const counts = useMemo(
+    () => ({
+      all: discounts.length,
+      active: discounts.filter(d => d.is_active).length,
+      inactive: discounts.filter(d => !d.is_active).length,
+    }),
+    [discounts],
+  );
+
   const handleToggle = async (id: number) => {
     try {
       const updated = await discountsApi.toggle(id);
-      setDiscounts(prev =>
-        prev.map(d => (d.id === id ? updated : d)),
-      );
+      setDiscounts(prev => prev.map(d => (d.id === id && updated ? updated : d)));
     } catch {
       showToast('error', 'Failed to toggle discount');
     }
@@ -139,7 +87,7 @@ export function DiscountListScreen({ navigation }: { navigation: any }) {
   const handleClone = async (id: number) => {
     try {
       const cloned = await discountsApi.clone(id);
-      setDiscounts(prev => [...prev, cloned]);
+      if (cloned) setDiscounts(prev => [...prev, cloned]);
       showToast('success', 'Discount cloned');
     } catch {
       showToast('error', 'Failed to clone discount');
@@ -165,240 +113,157 @@ export function DiscountListScreen({ navigation }: { navigation: any }) {
     ]);
   };
 
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1, backgroundColor: theme.colors.background },
+        toolbar: { paddingHorizontal: theme.spacing.lg, gap: theme.spacing.sm, paddingBottom: theme.spacing.sm },
+        list: { padding: theme.spacing.lg, paddingBottom: theme.spacing.xxxl + insets.bottom, gap: theme.spacing.sm },
+        card: {
+          backgroundColor: theme.colors.surface,
+          borderRadius: theme.borderRadius.lg,
+          padding: theme.spacing.lg,
+          borderColor: theme.colors.borderLight,
+          borderWidth: StyleSheet.hairlineWidth,
+          ...theme.shadows.sm,
+        },
+        cardHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.spacing.sm },
+        title: { ...theme.typography.bodyMedium, color: theme.colors.text, flex: 1 },
+        badges: { flexDirection: 'row', gap: theme.spacing.xs, flexWrap: 'wrap', marginTop: theme.spacing.xs },
+        couponRow: { flexDirection: 'row', alignItems: 'center', marginTop: theme.spacing.sm },
+        couponLabel: { ...theme.typography.caption, color: theme.colors.textSecondary },
+        couponCode: {
+          ...theme.typography.captionMedium,
+          color: theme.colors.primary,
+          backgroundColor: theme.colors.primarySoft,
+          paddingHorizontal: theme.spacing.sm,
+          paddingVertical: 2,
+          borderRadius: theme.borderRadius.sm,
+          overflow: 'hidden',
+          marginLeft: theme.spacing.xs,
+        },
+        valueText: {
+          ...theme.typography.h4,
+          color: theme.colors.success,
+          marginTop: theme.spacing.sm,
+        },
+        actionsRow: {
+          flexDirection: 'row',
+          gap: theme.spacing.lg,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: theme.colors.divider,
+          paddingTop: theme.spacing.sm,
+          marginTop: theme.spacing.sm,
+        },
+        actionLink: { ...theme.typography.captionMedium, color: theme.colors.primary, paddingVertical: 4 },
+        dangerLink: { ...theme.typography.captionMedium, color: theme.colors.error, paddingVertical: 4 },
+      }),
+    [theme, insets.bottom],
+  );
+
+  const renderCard = ({ item }: { item: Discount }) => {
+    const typeLabel = DISCOUNT_TYPES.find(t => t.value === item.type)?.label || item.type || '—';
+    const isActive = !!item.is_active;
+    const valueNumber = Number(item.discount_value) || 0;
+    const valueLabel =
+      item.discount_type === 'percentage' ? `${valueNumber}% off` : `$${valueNumber} off`;
+
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardHeaderRow}>
+          <Text style={styles.title} numberOfLines={2}>
+            {item.title || 'Untitled discount'}
+          </Text>
+          <Switch
+            value={isActive}
+            onValueChange={() => handleToggle(item.id)}
+            trackColor={{ false: theme.colors.border, true: theme.colors.primaryLight }}
+            thumbColor={isActive ? theme.colors.primary : theme.colors.textTertiary}
+          />
+        </View>
+        <View style={styles.badges}>
+          <StatusBadge label={typeLabel} tone="primary" />
+          <StatusBadge label={isActive ? 'Active' : 'Inactive'} tone={isActive ? 'success' : 'neutral'} dot />
+        </View>
+        {item.coupon_code ? (
+          <View style={styles.couponRow}>
+            <Text style={styles.couponLabel}>Code</Text>
+            <Text style={styles.couponCode}>{item.coupon_code}</Text>
+          </View>
+        ) : null}
+        <Text style={styles.valueText}>{valueLabel}</Text>
+        <View style={styles.actionsRow}>
+          <TouchableOpacity onPress={() => navigation.navigate('DiscountForm', { discountId: item.id })}>
+            <Text style={styles.actionLink}>Edit</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleClone(item.id)}>
+            <Text style={styles.actionLink}>Clone</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleDelete(item.id)}>
+            <Text style={styles.dangerLink}>Delete</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.menuButton}
-          onPress={() => navigation.openDrawer()}>
-          <Text style={styles.menuIcon}>|||</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Discounts</Text>
-        <Button
-          title="+ New"
-          onPress={() => navigation.navigate('DiscountForm')}
-          size="sm"
+      <AppHeader
+        title="Discounts"
+        subtitle={`${counts.active} active · ${counts.all} total`}
+        onMenu={() => drawerNav?.openDrawer()}
+        right={
+          <ActionButton
+            label="+ New"
+            onPress={() => navigation.navigate('DiscountForm')}
+            size="sm"
+          />
+        }
+      />
+
+      <View style={styles.toolbar}>
+        <SearchBar value={search} onChangeText={setSearch} placeholder="Search discounts…" />
+        <FilterChips
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { label: 'All', value: 'all', count: counts.all },
+            { label: 'Active', value: 'active', count: counts.active },
+            { label: 'Inactive', value: 'inactive', count: counts.inactive },
+          ]}
         />
       </View>
 
-      <View style={styles.filterRow}>
-        {(['all', 'active', 'inactive'] as const).map(f => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.filterButton, filter === f && styles.filterActive]}
-            onPress={() => setFilter(f)}>
-            <Text
-              style={[
-                styles.filterText,
-                filter === f && styles.filterTextActive,
-              ]}>
-              {f.charAt(0).toUpperCase() + f.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <FlatList
-        data={discounts}
-        keyExtractor={item => item.id.toString()}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl
-            refreshing={loading}
-            onRefresh={fetchDiscounts}
-            tintColor={colors.primary}
-          />
-        }
-        renderItem={({ item }) => (
-          <DiscountCard
-            discount={item}
-            onToggle={() => handleToggle(item.id)}
-            onEdit={() =>
-              navigation.navigate('DiscountForm', { discountId: item.id })
-            }
-            onClone={() => handleClone(item.id)}
-            onDelete={() => handleDelete(item.id)}
-          />
-        )}
-        ListEmptyComponent={
-          !loading ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No discounts yet</Text>
-              <Text style={styles.emptySubtitle}>
-                Create your first discount to attract customers
-              </Text>
-              <Button
-                title="Create Discount"
-                onPress={() => navigation.navigate('DiscountForm')}
-                style={styles.emptyButton}
+      {loading && discounts.length === 0 ? (
+        <LoadingState message="Loading discounts…" />
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={item => String(item.id)}
+          contentContainerStyle={styles.list}
+          renderItem={renderCard}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={fetchDiscounts}
+              tintColor={theme.colors.primary}
+              colors={[theme.colors.primary]}
+            />
+          }
+          ListEmptyComponent={
+            !loading ? (
+              <EmptyState
+                icon="%"
+                title="No discounts yet"
+                description={search ? 'Try a different search term.' : 'Create your first discount to attract customers.'}
+                actionLabel={search ? undefined : 'Create discount'}
+                onAction={search ? undefined : () => navigation.navigate('DiscountForm')}
               />
-            </View>
-          ) : null
-        }
-      />
+            ) : null
+          }
+        />
+      )}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-    gap: spacing.md,
-  },
-  menuButton: {
-    width: 36,
-    height: 36,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...shadows.sm,
-  },
-  menuIcon: {
-    fontSize: 16,
-    color: colors.text,
-    letterSpacing: -2,
-  },
-  headerTitle: {
-    ...typography.h2,
-    color: colors.text,
-    flex: 1,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  filterButton: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.round,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  filterActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  filterText: {
-    ...typography.captionMedium,
-    color: colors.textSecondary,
-  },
-  filterTextActive: {
-    color: colors.textInverse,
-  },
-  list: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xxxl,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    ...shadows.sm,
-  },
-  cardHeader: {
-    marginBottom: spacing.sm,
-  },
-  cardTitleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  cardTitle: {
-    ...typography.h4,
-    color: colors.text,
-    flex: 1,
-  },
-  badges: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  typeBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.primaryLight + '30',
-  },
-  typeBadgeText: {
-    ...typography.small,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  statusBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: borderRadius.sm,
-  },
-  statusBadgeText: {
-    ...typography.small,
-    fontWeight: '600',
-  },
-  couponRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  couponLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  couponCode: {
-    ...typography.captionMedium,
-    color: colors.primary,
-    backgroundColor: colors.primaryLight + '20',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 1,
-    borderRadius: borderRadius.sm,
-    overflow: 'hidden',
-  },
-  discountValue: {
-    ...typography.bodyMedium,
-    color: colors.success,
-    marginBottom: spacing.sm,
-  },
-  cardActions: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-    paddingTop: spacing.sm,
-    gap: spacing.lg,
-  },
-  actionButton: {
-    paddingVertical: spacing.xs,
-  },
-  actionText: {
-    ...typography.captionMedium,
-    color: colors.primary,
-  },
-  emptyState: {
-    padding: 60,
-    alignItems: 'center',
-  },
-  emptyTitle: {
-    ...typography.h3,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  emptySubtitle: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: spacing.lg,
-  },
-  emptyButton: {
-    minWidth: 160,
-  },
-});

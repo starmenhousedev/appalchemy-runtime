@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,12 +6,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Image,
+  StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
-import { colors, spacing, typography, shadows, borderRadius } from '../../theme';
+import { ActionButton } from '../../components/common/ActionButton';
+import { useTheme } from '../../theme';
 
 interface LoginScreenProps {
   navigation: {
@@ -20,9 +20,10 @@ interface LoginScreenProps {
 }
 
 export function LoginScreen({ navigation }: LoginScreenProps) {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const [shopDomain, setShopDomain] = useState('');
   const [error, setError] = useState('');
-  const insets = useSafeAreaInsets();
 
   const handleInstall = () => {
     const domain = shopDomain.trim().toLowerCase();
@@ -30,22 +31,72 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
       setError('Please enter your Shopify store domain');
       return;
     }
-
-    const fullDomain = domain.includes('.myshopify.com')
-      ? domain
-      : `${domain}.myshopify.com`;
-
+    const fullDomain = domain.includes('.myshopify.com') ? domain : `${domain}.myshopify.com`;
     setError('');
     navigation.navigate('OAuthWebView', { shop: fullDomain });
   };
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        flex: { flex: 1, backgroundColor: theme.colors.background },
+        scroll: { flexGrow: 1, paddingHorizontal: theme.spacing.xl },
+        logoContainer: { alignItems: 'center', marginBottom: 36 },
+        logoIcon: {
+          width: 80,
+          height: 80,
+          borderRadius: theme.borderRadius.xl,
+          backgroundColor: theme.colors.primary,
+          justifyContent: 'center',
+          alignItems: 'center',
+          marginBottom: theme.spacing.lg,
+          ...theme.shadows.lg,
+        },
+        logoEmoji: { fontSize: 36, color: '#fff', fontWeight: '700' },
+        appName: { ...theme.typography.h1, color: theme.colors.text, marginBottom: theme.spacing.xs },
+        tagline: { ...theme.typography.body, color: theme.colors.textSecondary },
+        card: {
+          backgroundColor: theme.colors.surface,
+          borderRadius: theme.borderRadius.xl,
+          padding: theme.spacing.xxl,
+          ...theme.shadows.md,
+          marginBottom: theme.spacing.xxxl,
+          borderColor: theme.colors.borderLight,
+          borderWidth: StyleSheet.hairlineWidth,
+        },
+        cardTitle: { ...theme.typography.h3, color: theme.colors.text, marginBottom: theme.spacing.xs },
+        cardSubtitle: {
+          ...theme.typography.body,
+          color: theme.colors.textSecondary,
+          marginBottom: theme.spacing.xl,
+        },
+        domainSuffix: { ...theme.typography.caption, color: theme.colors.textTertiary },
+        features: { gap: theme.spacing.lg, marginBottom: theme.spacing.xxxl },
+        featureItem: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.spacing.md },
+        featureDot: {
+          width: 10,
+          height: 10,
+          borderRadius: 5,
+          backgroundColor: theme.colors.primary,
+          marginTop: 6,
+        },
+        featureTitle: { ...theme.typography.bodyMedium, color: theme.colors.text },
+        featureDesc: { ...theme.typography.caption, color: theme.colors.textSecondary, marginTop: 2 },
+      }),
+    [theme],
+  );
 
   return (
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <StatusBar
+        barStyle={theme.isDark ? 'light-content' : 'dark-content'}
+        backgroundColor={theme.colors.background}
+      />
       <ScrollView
         contentContainerStyle={[
-          styles.container,
+          styles.scroll,
           { paddingTop: insets.top + 60, paddingBottom: insets.bottom + 20 },
         ]}
         keyboardShouldPersistTaps="handled">
@@ -59,9 +110,7 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Connect your store</Text>
-          <Text style={styles.cardSubtitle}>
-            Enter your Shopify store domain to get started
-          </Text>
+          <Text style={styles.cardSubtitle}>Enter your Shopify store domain to get started</Text>
 
           <Input
             label="Store Domain"
@@ -77,16 +126,10 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
             keyboardType="url"
             returnKeyType="go"
             onSubmitEditing={handleInstall}
-            rightIcon={
-              <Text style={styles.domainSuffix}>.myshopify.com</Text>
-            }
+            rightIcon={<Text style={styles.domainSuffix}>.myshopify.com</Text>}
           />
 
-          <Button
-            title="Install App"
-            onPress={handleInstall}
-            size="lg"
-          />
+          <ActionButton label="Install App" onPress={handleInstall} size="lg" fullWidth />
         </View>
 
         <View style={styles.features}>
@@ -97,7 +140,7 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
           ].map(feature => (
             <View key={feature.title} style={styles.featureItem}>
               <View style={styles.featureDot} />
-              <View style={styles.featureText}>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.featureTitle}>{feature.title}</Text>
                 <Text style={styles.featureDesc}>{feature.desc}</Text>
               </View>
@@ -108,89 +151,3 @@ export function LoginScreen({ navigation }: LoginScreenProps) {
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  container: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.xl,
-  },
-  logoContainer: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  logoIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: borderRadius.xl,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-    ...shadows.lg,
-  },
-  logoEmoji: {
-    fontSize: 32,
-    color: colors.textInverse,
-    fontWeight: '700',
-  },
-  appName: {
-    ...typography.h1,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  tagline: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.xxl,
-    ...shadows.md,
-    marginBottom: 32,
-  },
-  cardTitle: {
-    ...typography.h3,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  cardSubtitle: {
-    ...typography.body,
-    color: colors.textSecondary,
-    marginBottom: spacing.xxl,
-  },
-  domainSuffix: {
-    ...typography.caption,
-    color: colors.textTertiary,
-  },
-  features: {
-    gap: spacing.lg,
-  },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  featureDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.primary,
-    marginTop: 6,
-  },
-  featureText: {
-    flex: 1,
-  },
-  featureTitle: {
-    ...typography.bodyMedium,
-    color: colors.text,
-  },
-  featureDesc: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-});

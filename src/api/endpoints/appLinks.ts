@@ -11,10 +11,11 @@ export const appLinksApi = {
   },
 
   async listDeeplinks() {
-    const { data } = await apiClient.get<ApiResponse<AppLink[]>>(
-      '/app-links/deeplinks',
-    );
-    return data.data;
+    const { data } = await apiClient.get<ApiResponse<any>>('/app-links/deeplinks');
+    const payload = data?.data;
+    if (Array.isArray(payload)) return payload as AppLink[];
+    if (payload && Array.isArray(payload.deeplinks)) return payload.deeplinks as AppLink[];
+    return [] as AppLink[];
   },
 
   async getDeeplink(id: number) {
@@ -40,9 +41,10 @@ export const appLinksApi = {
   },
 
   async listOnelinks() {
-    const { data } = await apiClient.get<ApiResponse<AppLink[]>>(
-      '/app-links/onelinks',
-    );
-    return data.data;
+    const { data } = await apiClient.get<ApiResponse<any>>('/app-links/onelinks');
+    const payload = data?.data;
+    if (Array.isArray(payload)) return payload as AppLink[];
+    if (payload && Array.isArray(payload.onelinks)) return payload.onelinks as AppLink[];
+    return [] as AppLink[];
   },
 };

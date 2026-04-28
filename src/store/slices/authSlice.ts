@@ -1,7 +1,18 @@
+import { Platform } from 'react-native';
 import { StateCreator } from 'zustand';
 import { storage } from '../../utils/storage';
-import { authApi } from '../../api';
+import { authApi, analyticsApi } from '../../api';
 import type { Shop } from '../../types';
+
+const fireAndForgetTrack = (event_type: string, metadata?: Record<string, unknown>) => {
+  analyticsApi
+    .trackEvent({
+      event_type,
+      platform: Platform.OS,
+      metadata,
+    })
+    .catch(() => {});
+};
 
 export interface AuthSlice {
   token: string | null;
@@ -34,9 +45,11 @@ export const createAuthSlice: StateCreator<AuthSlice> = (set, get) => ({
     } catch {
       // Session fetch failed but we're still authenticated
     }
+    fireAndForgetTrack('login', shopDomain ? { shop_domain: shopDomain } : undefined);
   },
 
   logout: async () => {
+    fireAndForgetTrack('logout');
     await storage.clearAll();
     set({
       token: null,

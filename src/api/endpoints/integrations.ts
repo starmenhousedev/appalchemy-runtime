@@ -3,10 +3,11 @@ import type { ApiResponse, Integration, IntegrationProvider } from '../../types'
 
 export const integrationsApi = {
   async list() {
-    const { data } = await apiClient.get<ApiResponse<Integration[]>>(
-      '/integrations',
-    );
-    return data.data;
+    const { data } = await apiClient.get<ApiResponse<any>>('/integrations');
+    const payload = data?.data;
+    if (Array.isArray(payload)) return payload as Integration[];
+    if (payload && Array.isArray(payload.integrations)) return payload.integrations as Integration[];
+    return [] as Integration[];
   },
 
   async get(provider: IntegrationProvider) {

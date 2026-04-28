@@ -50,9 +50,11 @@ export function BottomBarEditorScreen({
         bottomBarApi.get(themeId),
         pagesApi.list(themeId),
       ]);
-      setItems(barItems);
-      setPages(pageList);
+      setItems(Array.isArray(barItems) ? barItems : []);
+      setPages(Array.isArray(pageList) ? pageList : []);
     } catch {
+      setItems([]);
+      setPages([]);
       showToast('error', 'Failed to load bottom bar');
     } finally {
       setLoading(false);
@@ -96,6 +98,49 @@ export function BottomBarEditorScreen({
     }
   };
 
+  const persistOrder = async (ordered: BottomBarItem[]) => {
+    try {
+      await bottomBarApi.reorderItems(themeId, ordered.map(i => i.id));
+    } catch {
+      showToast('error', 'Failed to save new order');
+    }
+  };
+
+  const handleMove = (id: number, direction: -1 | 1) => {
+    const sorted = [...items].sort((a, b) => a.sort_order - b.sort_order);
+    const idx = sorted.findIndex(i => i.id === id);
+    if (idx < 0) return;
+    const targetIdx = idx + direction;
+    if (targetIdx < 0 || targetIdx >= sorted.length) return;
+    const reordered = [...sorted];
+    const [moved] = reordered.splice(idx, 1);
+    reordered.splice(targetIdx, 0, moved);
+    const withOrder = reordered.map((it, i) => ({ ...it, sort_order: i }));
+    setItems(withOrder);
+    persistOrder(withOrder);
+  };
+
+  const handleSaveBulk = async () => {
+    try {
+      const sorted = [...items].sort((a, b) => a.sort_order - b.sort_order);
+      const updated = await bottomBarApi.update(
+        themeId,
+        sorted.map(({ id, label, icon, page_id, sort_order, is_active }) => ({
+          id,
+          label,
+          icon,
+          page_id,
+          sort_order,
+          is_active,
+        })),
+      );
+      if (Array.isArray(updated)) setItems(updated);
+      showToast('success', 'Bottom bar saved');
+    } catch {
+      showToast('error', 'Failed to save bottom bar');
+    }
+  };
+
   const handleDeleteItem = (itemId: number) => {
     Alert.alert('Delete Item', 'Remove this bottom bar item?', [
       { text: 'Cancel', style: 'cancel' },
@@ -124,7 +169,10 @@ export function BottomBarEditorScreen({
       <View style={styles.header}>
         <Button title="Back" onPress={() => navigation.goBack()} variant="ghost" size="sm" />
         <Text style={styles.headerTitle}>Bottom Bar</Text>
-        <Button title="+ Add" onPress={() => setShowAddForm(true)} size="sm" />
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          <Button title="Save" onPress={handleSaveBulk} variant="ghost" size="sm" />
+          <Button title="+ Add" onPress={() => setShowAddForm(true)} size="sm" />
+        </View>
       </View>
 
       {/* Preview */}
@@ -158,7 +206,24 @@ export function BottomBarEditorScreen({
             ) : (
               <>
                 <View style={styles.dragHandle}>
-                  <Text style={styles.dragDots}>⠿</Text>
+                  <TouchableOpacity
+                    onPress={() => handleMove(item.id, -1)}
+                    disabled={index === 0}
+                    hitSlop={8}>
+                    <Text style={[styles.dragDots, index === 0 && { opacity: 0.3 }]}>↑</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleMove(item.id, 1)}
+                    disabled={index === sortedItems.length - 1}
+                    hitSlop={8}>
+                    <Text
+                      style={[
+                        styles.dragDots,
+                        index === sortedItems.length - 1 && { opacity: 0.3 },
+                      ]}>
+                      ↓
+                    </Text>
+                  </TouchableOpacity>
                 </View>
                 <View style={styles.itemInfo}>
                   <Text style={styles.itemLabel}>{item.label}</Text>

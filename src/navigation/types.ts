@@ -1,6 +1,12 @@
+import type { NavigatorScreenParams } from '@react-navigation/native';
+
 export type AuthStackParamList = {
   Login: undefined;
   OAuthWebView: { shop: string };
+};
+
+export type DashboardStackParamList = {
+  DashboardHome: undefined;
 };
 
 export type DesignStackParamList = {
@@ -10,10 +16,11 @@ export type DesignStackParamList = {
   BottomBarEditor: { themeId: number };
   ThemeSettings: { themeId: number };
   ThemeCode: { themeId: number };
+  Preview: { themeId: number; pageId?: number };
 };
 
 export type AnalyticsStackParamList = {
-  Dashboard: undefined;
+  AnalyticsDashboard: undefined;
   ConversionFunnel: undefined;
   TopProducts: undefined;
 };
@@ -43,12 +50,22 @@ export type MoreStackParamList = {
   UserForm: { userId?: number };
   Billing: undefined;
   Publish: undefined;
+  MediaLibrary: undefined;
+  ShopifyData: undefined;
+  ThemeCatalog: undefined;
 };
 
 export type DrawerParamList = {
-  Design: undefined;
-  Analytics: undefined;
-  Discounts: undefined;
-  Push: undefined;
-  More: undefined;
+  Dashboard: NavigatorScreenParams<DashboardStackParamList>;
+  Design: NavigatorScreenParams<DesignStackParamList>;
+  Analytics: NavigatorScreenParams<AnalyticsStackParamList>;
+  Discounts: NavigatorScreenParams<DiscountsStackParamList>;
+  Push: NavigatorScreenParams<PushStackParamList>;
+  More: NavigatorScreenParams<MoreStackParamList>;
 };
+
+declare global {
+  namespace ReactNavigation {
+    interface RootParamList extends DrawerParamList {}
+  }
+}

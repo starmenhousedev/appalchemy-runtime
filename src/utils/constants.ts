@@ -1,4 +1,4 @@
-export const API_BASE_URL = 'https://assets.deodap.in/api';
+export const API_BASE_URL = 'https://analytics.deodap.in/api';
 
 export const STORAGE_KEYS = {
   AUTH_TOKEN: '@appalchemy_token',

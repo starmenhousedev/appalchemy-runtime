@@ -1,22 +1,20 @@
-import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-} from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { appSettingsApi } from '../../api';
 import { useStore } from '../../store';
-import { colors, spacing, typography, shadows, borderRadius } from '../../theme';
-import { Button } from '../../components/common/Button';
+import { useTheme } from '../../theme';
+import { AppHeader } from '../../components/common/AppHeader';
+import { ActionButton } from '../../components/common/ActionButton';
+import { SectionCard } from '../../components/common/SectionCard';
 import { Input } from '../../components/common/Input';
-import { LoadingOverlay } from '../../components/common/LoadingOverlay';
-import type { AppInfo } from '../../types';
+import { LoadingState } from '../../components/common/LoadingState';
 
 export function AppInfoScreen({ navigation }: { navigation: any }) {
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
   const showToast = useStore(s => s.showToast);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [appId, setAppId] = useState('');
@@ -26,23 +24,21 @@ export function AppInfoScreen({ navigation }: { navigation: any }) {
   const [iosTeamId, setIosTeamId] = useState('');
 
   useEffect(() => {
-    loadData();
+    (async () => {
+      try {
+        const data = await appSettingsApi.getAppInfo();
+        setAppId(data.app_id || '');
+        setFirebaseProjectId(data.firebase_project_id || '');
+        setAndroidPackage(data.android_package_name || '');
+        setIosBundleId(data.ios_bundle_id || '');
+        setIosTeamId(data.ios_team_id || '');
+      } catch {
+        // No app info yet
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
-
-  const loadData = async () => {
-    try {
-      const data = await appSettingsApi.getAppInfo();
-      setAppId(data.app_id || '');
-      setFirebaseProjectId(data.firebase_project_id || '');
-      setAndroidPackage(data.android_package_name || '');
-      setIosBundleId(data.ios_bundle_id || '');
-      setIosTeamId(data.ios_team_id || '');
-    } catch {
-      // No app info yet
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -62,66 +58,72 @@ export function AppInfoScreen({ navigation }: { navigation: any }) {
     }
   };
 
-  if (loading) return <LoadingOverlay fullScreen />;
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1, backgroundColor: theme.colors.background },
+        content: { padding: theme.spacing.lg, paddingBottom: theme.spacing.xxxl + insets.bottom, gap: theme.spacing.md },
+        infoCard: {
+          backgroundColor: theme.colors.infoLight,
+          borderRadius: theme.borderRadius.lg,
+          padding: theme.spacing.lg,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: theme.colors.info + '40',
+        },
+        infoTitle: { ...theme.typography.bodyMedium, color: theme.colors.info, marginBottom: theme.spacing.xs },
+        infoText: { ...theme.typography.caption, color: theme.colors.text, lineHeight: 20 },
+      }),
+    [theme, insets.bottom],
+  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Button title="Back" onPress={() => navigation.goBack()} variant="ghost" size="sm" />
-        <Text style={styles.headerTitle}>App Information</Text>
-        <Button title="Save" onPress={handleSave} size="sm" loading={saving} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>GENERAL</Text>
-          <Input label="App ID" value={appId} onChangeText={setAppId} placeholder="com.yourstore.app" />
-          <Input label="Firebase Project ID" value={firebaseProjectId} onChangeText={setFirebaseProjectId} placeholder="your-firebase-project" />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>ANDROID</Text>
-          <Input label="Package Name" value={androidPackage} onChangeText={setAndroidPackage} placeholder="com.yourstore.app" />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>iOS</Text>
-          <Input label="Bundle ID" value={iosBundleId} onChangeText={setIosBundleId} placeholder="com.yourstore.app" />
-          <Input label="Team ID" value={iosTeamId} onChangeText={setIosTeamId} placeholder="ABCDEF1234" />
-        </View>
-
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Need help?</Text>
-          <Text style={styles.infoText}>
-            These values are used to configure your app builds. You can find your Firebase Project ID in the Firebase Console and your iOS Team ID in the Apple Developer Portal.
-          </Text>
-        </View>
-      </ScrollView>
+      <AppHeader
+        title="App Information"
+        onBack={() => navigation.goBack()}
+        right={<ActionButton label="Save" size="sm" loading={saving} onPress={handleSave} />}
+      />
+      {loading ? (
+        <LoadingState message="Loading…" />
+      ) : (
+        <ScrollView contentContainerStyle={styles.content}>
+          <SectionCard title="General">
+            <Input label="App ID" value={appId} onChangeText={setAppId} placeholder="com.yourstore.app" autoCapitalize="none" />
+            <Input
+              label="Firebase Project ID"
+              value={firebaseProjectId}
+              onChangeText={setFirebaseProjectId}
+              placeholder="your-firebase-project"
+              autoCapitalize="none"
+            />
+          </SectionCard>
+          <SectionCard title="Android">
+            <Input
+              label="Package Name"
+              value={androidPackage}
+              onChangeText={setAndroidPackage}
+              placeholder="com.yourstore.app"
+              autoCapitalize="none"
+            />
+          </SectionCard>
+          <SectionCard title="iOS">
+            <Input
+              label="Bundle ID"
+              value={iosBundleId}
+              onChangeText={setIosBundleId}
+              placeholder="com.yourstore.app"
+              autoCapitalize="none"
+            />
+            <Input label="Team ID" value={iosTeamId} onChangeText={setIosTeamId} placeholder="ABCDEF1234" autoCapitalize="characters" />
+          </SectionCard>
+          <View style={styles.infoCard}>
+            <Text style={styles.infoTitle}>Need help?</Text>
+            <Text style={styles.infoText}>
+              These values configure your app builds. You can find your Firebase Project ID in the Firebase Console and your iOS Team ID in the Apple Developer Portal.
+            </Text>
+          </View>
+        </ScrollView>
+      )}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
-    borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface,
-  },
-  headerTitle: { ...typography.h4, color: colors.text },
-  content: { padding: spacing.lg, paddingBottom: spacing.xxxl },
-  section: {
-    backgroundColor: colors.surface, borderRadius: borderRadius.lg,
-    padding: spacing.lg, marginBottom: spacing.lg, ...shadows.sm,
-  },
-  sectionTitle: {
-    ...typography.captionMedium, color: colors.textSecondary,
-    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: spacing.md,
-  },
-  infoCard: {
-    backgroundColor: colors.info + '10', borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-  },
-  infoTitle: { ...typography.captionMedium, color: colors.info, marginBottom: spacing.xs },
-  infoText: { ...typography.caption, color: colors.text, lineHeight: 20 },
-});

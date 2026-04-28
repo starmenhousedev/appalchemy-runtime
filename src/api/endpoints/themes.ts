@@ -9,11 +9,18 @@ import type {
   ProductSortingConfig,
 } from '../../types';
 
+function asArray<T>(payload: any, key?: string): T[] {
+  if (Array.isArray(payload)) return payload as T[];
+  if (payload && key && Array.isArray(payload[key])) return payload[key] as T[];
+  if (payload && Array.isArray(payload.items)) return payload.items as T[];
+  return [];
+}
+
 export const themesApi = {
   // Starter themes
   async listThemes() {
-    const { data } = await apiClient.get<ApiResponse<Theme[]>>('/themes');
-    return data.data;
+    const { data } = await apiClient.get<ApiResponse<any>>('/themes');
+    return asArray<Theme>(data?.data, 'themes');
   },
 
   async getTheme(themeId: number) {
@@ -33,10 +40,10 @@ export const themesApi = {
 
   // Imported themes
   async listImported() {
-    const { data } = await apiClient.get<ApiResponse<ImportedTheme[]>>(
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/themes/imported/list',
     );
-    return data.data;
+    return asArray<ImportedTheme>(data?.data, 'themes');
   },
 
   async renameImported(id: number, name: string) {

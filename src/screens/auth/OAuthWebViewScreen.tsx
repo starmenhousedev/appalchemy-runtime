@@ -1,7 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Linking } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { WebView, WebViewNavigation } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { authApi } from '../../api';
+import { useStore } from '../../store';
+import { parseAuthCallbackUrl } from '../../utils/authCallback';
 import { colors, spacing, typography } from '../../theme';
 import { Button } from '../../components/common/Button';
 
@@ -18,30 +21,51 @@ interface OAuthWebViewScreenProps {
 
 export function OAuthWebViewScreen({ route, navigation }: OAuthWebViewScreenProps) {
   const { shop } = route.params;
-  const [opening, setOpening] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { login } = useStore();
   const insets = useSafeAreaInsets();
   const installUrl = authApi.getInstallUrl(shop);
+  const handledRef = useRef(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const openShopify = useCallback(async () => {
-    setOpening(true);
-    setError(null);
+  const completeAuth = useCallback(
+    async (url: string) => {
+      if (handledRef.current) {
+        return;
+      }
+      const params = parseAuthCallbackUrl(url);
+      if (!params) {
+        return;
+      }
+      handledRef.current = true;
+      try {
+        await login(params.token, params.shop);
+      } catch {
+        handledRef.current = false;
+        setError('Sign-in failed. Please try again.');
+      }
+    },
+    [login],
+  );
 
-    try {
-      await Linking.openURL(installUrl);
-    } catch {
-      setError('Unable to open Shopify. Please try again.');
-    } finally {
-      setOpening(false);
-    }
-  }, [installUrl]);
+  const onShouldStartLoadWithRequest = useCallback(
+    (request: { url: string }) => {
+      if (parseAuthCallbackUrl(request.url)) {
+        completeAuth(request.url).catch(() => {});
+        return false;
+      }
+      return true;
+    },
+    [completeAuth],
+  );
 
-  useEffect(() => {
-    openShopify().catch(() => {
-      setError('Unable to open Shopify. Please try again.');
-      setOpening(false);
-    });
-  }, [openShopify]);
+  const onNavigationStateChange = useCallback(
+    (state: WebViewNavigation) => {
+      if (parseAuthCallbackUrl(state.url)) {
+        completeAuth(state.url).catch(() => {});
+      }
+    },
+    [completeAuth],
+  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -62,50 +86,32 @@ export function OAuthWebViewScreen({ route, navigation }: OAuthWebViewScreenProp
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
           <Button
-            title="Open Shopify"
-            onPress={() => {
-              openShopify().catch(() => {
-                setError('Unable to open Shopify. Please try again.');
-              });
-            }}
+            title="Back"
+            onPress={() => navigation.goBack()}
             variant="outline"
             style={styles.retryButton}
           />
         </View>
       ) : (
-        <View style={styles.content}>
-          <Text style={styles.title}>Finish setup in your browser</Text>
-          <Text style={styles.body}>
-            Shopify will open in your device browser so you can approve the app
-            with your store account.
-          </Text>
-          <Text style={styles.body}>
-            {"After approval, you'll come back here automatically."}
-          </Text>
-          <Button
-            title="Open Shopify"
-            onPress={() => {
-              openShopify().catch(() => {
-                setError('Unable to open Shopify. Please try again.');
-              });
-            }}
-            size="lg"
-            style={styles.openButton}
-          />
-          <Button
-            title="Back"
-            onPress={() => navigation.goBack()}
-            variant="ghost"
-            size="sm"
-          />
-        </View>
-      )}
-
-      {opening && !error && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Opening Shopify...</Text>
-        </View>
+        <WebView
+          source={{ uri: installUrl }}
+          onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
+          onNavigationStateChange={onNavigationStateChange}
+          startInLoadingState
+          incognito
+          cacheEnabled={false}
+          thirdPartyCookiesEnabled
+          javaScriptEnabled
+          domStorageEnabled
+          userAgent="Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
+          applicationNameForUserAgent="AppEngineX"
+          renderLoading={() => (
+            <View style={styles.loadingOverlay}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.loadingText}>Opening Shopify...</Text>
+            </View>
+          )}
+        />
       )}
     </View>
   );
@@ -133,24 +139,6 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 60,
   },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xxl,
-  },
-  title: {
-    ...typography.h3,
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: spacing.md,
-  },
-  body: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: spacing.md,
-  },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
@@ -176,10 +164,5 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     minWidth: 140,
-  },
-  openButton: {
-    minWidth: 200,
-    marginTop: spacing.lg,
-    marginBottom: spacing.md,
   },
 });

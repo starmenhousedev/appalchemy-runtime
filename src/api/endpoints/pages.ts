@@ -3,10 +3,13 @@ import type { ApiResponse, Page, PageType } from '../../types';
 
 export const pagesApi = {
   async list(themeId: number) {
-    const { data } = await apiClient.get<ApiResponse<Page[]>>(
+    const { data } = await apiClient.get<ApiResponse<any>>(
       `/themes/imported/${themeId}/pages`,
     );
-    return data.data;
+    const payload = data?.data;
+    if (Array.isArray(payload)) return payload as Page[];
+    if (payload && Array.isArray(payload.pages)) return payload.pages as Page[];
+    return [] as Page[];
   },
 
   async create(

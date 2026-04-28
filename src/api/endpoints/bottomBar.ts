@@ -3,10 +3,13 @@ import type { ApiResponse, BottomBarItem } from '../../types';
 
 export const bottomBarApi = {
   async get(themeId: number) {
-    const { data } = await apiClient.get<ApiResponse<BottomBarItem[]>>(
+    const { data } = await apiClient.get<ApiResponse<any>>(
       `/themes/imported/${themeId}/bottom-bar`,
     );
-    return data.data;
+    const payload = data?.data;
+    if (Array.isArray(payload)) return payload as BottomBarItem[];
+    if (payload && Array.isArray(payload.items)) return payload.items as BottomBarItem[];
+    return [] as BottomBarItem[];
   },
 
   async update(themeId: number, items: Partial<BottomBarItem>[]) {

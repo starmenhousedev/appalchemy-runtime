@@ -2,17 +2,19 @@ import React from 'react';
 import { View, Text, StyleSheet, Image, ScrollView } from 'react-native';
 import { colors, spacing, typography, borderRadius, shadows } from '../../theme';
 import type { TopProduct } from '../../types';
+import { safeNumber } from './utils';
 
 interface TopProductsTableProps {
   data: TopProduct[];
 }
 
 export function TopProductsTable({ data }: TopProductsTableProps) {
+  const safeData = Array.isArray(data) ? data.filter(Boolean) : [];
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Top Products</Text>
 
-      {data.length > 0 ? (
+      {safeData.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View>
             {/* Header */}
@@ -26,34 +28,34 @@ export function TopProductsTable({ data }: TopProductsTableProps) {
             </View>
 
             {/* Rows */}
-            {data.map((product, index) => (
+            {safeData.map((product, index) => (
               <View
-                key={product.product_id}
+                key={product?.product_id ?? index}
                 style={[styles.dataRow, index % 2 === 0 && styles.dataRowAlt]}>
                 <View style={[styles.productCell, styles.productCol]}>
-                  {product.image ? (
+                  {product?.image ? (
                     <Image source={{ uri: product.image }} style={styles.productImage} />
                   ) : (
                     <View style={styles.productImagePlaceholder} />
                   )}
                   <Text style={styles.productTitle} numberOfLines={2}>
-                    {product.title}
+                    {product?.title ?? 'Untitled'}
                   </Text>
                 </View>
                 <Text style={[styles.dataCell, styles.metricCol]}>
-                  {product.viewed.toLocaleString()}
+                  {safeNumber(product?.viewed).toLocaleString()}
                 </Text>
                 <Text style={[styles.dataCell, styles.metricCol]}>
-                  {product.added_to_cart.toLocaleString()}
+                  {safeNumber(product?.added_to_cart).toLocaleString()}
                 </Text>
                 <Text style={[styles.dataCell, styles.metricCol]}>
-                  {product.wishlisted.toLocaleString()}
+                  {safeNumber(product?.wishlisted).toLocaleString()}
                 </Text>
                 <Text style={[styles.dataCell, styles.metricCol]}>
-                  {product.purchased.toLocaleString()}
+                  {safeNumber(product?.purchased).toLocaleString()}
                 </Text>
                 <Text style={[styles.dataCell, styles.revenueCol, styles.revenueText]}>
-                  ${product.revenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  ${safeNumber(product?.revenue).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </Text>
               </View>
             ))}
@@ -70,21 +72,30 @@ export function TopProductsTable({ data }: TopProductsTableProps) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.surface, borderRadius: borderRadius.lg,
-    padding: spacing.lg, ...shadows.sm,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    ...shadows.sm,
   },
   title: { ...typography.bodyMedium, color: colors.text, marginBottom: spacing.md },
   headerRow: {
-    flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border,
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
     paddingBottom: spacing.sm,
   },
   headerCell: {
-    ...typography.captionMedium, color: colors.textSecondary,
-    textTransform: 'uppercase', letterSpacing: 0.3,
+    ...typography.captionMedium,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   dataRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: spacing.sm, borderBottomWidth: 0.5, borderBottomColor: colors.borderLight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.borderLight,
   },
   dataRowAlt: { backgroundColor: colors.surfaceSecondary + '50' },
   productCol: { width: 180 },
@@ -93,14 +104,20 @@ const styles = StyleSheet.create({
   productCell: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   productImage: { width: 36, height: 36, borderRadius: borderRadius.sm, backgroundColor: colors.surfaceSecondary },
   productImagePlaceholder: {
-    width: 36, height: 36, borderRadius: borderRadius.sm, backgroundColor: colors.surfaceSecondary,
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.surfaceSecondary,
   },
   productTitle: { ...typography.caption, color: colors.text, flex: 1 },
   dataCell: { ...typography.caption, color: colors.text },
   revenueText: { ...typography.captionMedium, color: colors.success },
   emptyState: {
-    height: 80, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: colors.surfaceSecondary, borderRadius: borderRadius.md,
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: borderRadius.md,
   },
   emptyText: { ...typography.caption, color: colors.textTertiary },
 });

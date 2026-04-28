@@ -1,20 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-} from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usersApi } from '../../api';
 import { useStore } from '../../store';
-import { colors, spacing, typography, shadows, borderRadius } from '../../theme';
-import { Button } from '../../components/common/Button';
+import { useTheme } from '../../theme';
+import { AppHeader } from '../../components/common/AppHeader';
+import { ActionButton } from '../../components/common/ActionButton';
 import { Input } from '../../components/common/Input';
-import { LoadingOverlay } from '../../components/common/LoadingOverlay';
+import { LoadingState } from '../../components/common/LoadingState';
 import { USER_ROLES } from '../../utils/constants';
-import type { UserRole } from '../../types';
+import type { UserRole, RolePermissionMap } from '../../types';
 
 export function UserFormScreen({
   route,
@@ -25,6 +20,7 @@ export function UserFormScreen({
 }) {
   const userId = route.params?.userId;
   const isEditing = !!userId;
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
   const showToast = useStore(s => s.showToast);
 
@@ -34,22 +30,63 @@ export function UserFormScreen({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('viewer');
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const [rolePermissions, setRolePermissions] = useState<RolePermissionMap>({});
+  const [savingPermissions, setSavingPermissions] = useState(false);
 
   useEffect(() => {
-    if (userId) loadUser();
+    (async () => {
+      try {
+        const map = await usersApi.getRoles();
+        setRolePermissions(map ?? {});
+      } catch {
+        // Roles map is optional; fall back to defaults
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      try {
+        const data = await usersApi.get(userId);
+        setName(data.name);
+        setEmail(data.email);
+        setRole(data.role);
+        setPermissions(Array.isArray(data.permissions) ? data.permissions : []);
+      } catch {
+        showToast('error', 'Failed to load user');
+        navigation.goBack();
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  const loadUser = async () => {
+  const knownPermissions = useMemo(() => {
+    const all = new Set<string>(permissions);
+    Object.values(rolePermissions).forEach(list => list.forEach(p => all.add(p)));
+    return Array.from(all).sort();
+  }, [rolePermissions, permissions]);
+
+  const togglePermission = (key: string) => {
+    setPermissions(prev =>
+      prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key],
+    );
+  };
+
+  const handleSavePermissions = async () => {
+    if (!userId) return;
+    setSavingPermissions(true);
     try {
-      const data = await usersApi.get(userId!);
-      setName(data.name);
-      setEmail(data.email);
-      setRole(data.role);
+      const updated = await usersApi.updatePermissions(userId, permissions);
+      setPermissions(Array.isArray(updated.permissions) ? updated.permissions : permissions);
+      showToast('success', 'Permissions updated');
     } catch {
-      showToast('error', 'Failed to load user');
-      navigation.goBack();
+      showToast('error', 'Failed to update permissions');
     } finally {
-      setLoading(false);
+      setSavingPermissions(false);
     }
   };
 
@@ -62,7 +99,6 @@ export function UserFormScreen({
       showToast('error', 'Password is required for new users');
       return;
     }
-
     setSaving(true);
     try {
       if (isEditing) {
@@ -85,76 +121,133 @@ export function UserFormScreen({
     }
   };
 
-  if (loading) return <LoadingOverlay fullScreen />;
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1, backgroundColor: theme.colors.background },
+        form: { padding: theme.spacing.lg, paddingBottom: theme.spacing.xxxl + insets.bottom, gap: theme.spacing.md },
+        sectionTitle: {
+          ...theme.typography.captionMedium,
+          color: theme.colors.textSecondary,
+          textTransform: 'uppercase',
+          letterSpacing: 0.5,
+          marginBottom: theme.spacing.sm,
+          marginTop: theme.spacing.sm,
+        },
+        roleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm },
+        roleCard: {
+          paddingHorizontal: theme.spacing.lg,
+          paddingVertical: theme.spacing.sm + 2,
+          borderRadius: theme.borderRadius.md,
+          borderWidth: 1.5,
+          borderColor: theme.colors.borderLight,
+          backgroundColor: theme.colors.surface,
+        },
+        roleCardActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft },
+        roleLabel: { ...theme.typography.captionMedium, color: theme.colors.textSecondary },
+        roleLabelActive: { color: theme.colors.primary },
+        infoCard: {
+          backgroundColor: theme.colors.infoLight,
+          borderRadius: theme.borderRadius.lg,
+          padding: theme.spacing.lg,
+          borderColor: theme.colors.info + '40',
+          borderWidth: StyleSheet.hairlineWidth,
+        },
+        infoTitle: { ...theme.typography.captionMedium, color: theme.colors.info, marginBottom: theme.spacing.xs },
+        infoText: { ...theme.typography.caption, color: theme.colors.text, lineHeight: 20 },
+      }),
+    [theme, insets.bottom],
+  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Button title="Cancel" onPress={() => navigation.goBack()} variant="ghost" size="sm" />
-        <Text style={styles.headerTitle}>{isEditing ? 'Edit User' : 'Invite User'}</Text>
-        <Button title="Save" onPress={handleSave} size="sm" loading={saving} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.form}>
-        <Input label="Name" value={name} onChangeText={setName} placeholder="Full name" />
-        <Input label="Email" value={email} onChangeText={setEmail} placeholder="user@example.com" keyboardType="email-address" autoCapitalize="none" />
-        {!isEditing && (
-          <Input label="Password" value={password} onChangeText={setPassword} placeholder="Temporary password" secureTextEntry />
-        )}
-
-        <Text style={styles.sectionTitle}>ROLE</Text>
-        <View style={styles.roleGrid}>
-          {USER_ROLES.map(r => (
-            <TouchableOpacity
-              key={r.value}
-              style={[styles.roleCard, role === r.value && styles.roleCardActive]}
-              onPress={() => setRole(r.value as UserRole)}>
-              <Text style={[styles.roleLabel, role === r.value && styles.roleLabelActive]}>
-                {r.label}
+      <AppHeader
+        title={isEditing ? 'Edit User' : 'Invite User'}
+        onBack={() => navigation.goBack()}
+        right={<ActionButton label="Save" size="sm" loading={saving} onPress={handleSave} />}
+      />
+      {loading ? (
+        <LoadingState message="Loading…" />
+      ) : (
+        <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
+          <Input label="Name" value={name} onChangeText={setName} placeholder="Full name" />
+          <Input
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="user@example.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {!isEditing && (
+            <Input
+              label="Password"
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Temporary password"
+              secureTextEntry
+            />
+          )}
+          <Text style={styles.sectionTitle}>Role</Text>
+          <View style={styles.roleGrid}>
+            {USER_ROLES.map(r => {
+              const active = role === r.value;
+              return (
+                <TouchableOpacity
+                  key={r.value}
+                  style={[styles.roleCard, active && styles.roleCardActive]}
+                  onPress={() => setRole(r.value as UserRole)}>
+                  <Text style={[styles.roleLabel, active && styles.roleLabelActive]}>{r.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <View style={styles.infoCard}>
+            <Text style={styles.infoTitle}>Role Permissions</Text>
+            <Text style={styles.infoText}>
+              {role === 'owner' && 'Full access to all features. Cannot be modified.'}
+              {role === 'admin' && 'Full access except billing and user management.'}
+              {role === 'editor' && 'Can edit themes, pages, sections, and discounts.'}
+              {role === 'viewer' && 'Read-only access to all features.'}
+            </Text>
+            {rolePermissions[role] && rolePermissions[role].length > 0 ? (
+              <Text style={[styles.infoText, { marginTop: theme.spacing.xs, fontFamily: 'monospace' }]}>
+                {rolePermissions[role].join(', ')}
               </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+            ) : null}
+          </View>
 
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Role Permissions</Text>
-          <Text style={styles.infoText}>
-            {role === 'owner' && 'Full access to all features. Cannot be modified.'}
-            {role === 'admin' && 'Full access except billing and user management.'}
-            {role === 'editor' && 'Can edit themes, pages, sections, and discounts.'}
-            {role === 'viewer' && 'Read-only access to all features.'}
-          </Text>
-        </View>
-      </ScrollView>
+          {isEditing && knownPermissions.length > 0 ? (
+            <>
+              <Text style={styles.sectionTitle}>Custom Permissions</Text>
+              <Text style={[theme.typography.caption, { color: theme.colors.textSecondary, marginBottom: theme.spacing.sm }]}>
+                Override the role default by toggling specific permissions.
+              </Text>
+              <View style={styles.roleGrid}>
+                {knownPermissions.map(p => {
+                  const active = permissions.includes(p);
+                  return (
+                    <TouchableOpacity
+                      key={p}
+                      style={[styles.roleCard, active && styles.roleCardActive]}
+                      onPress={() => togglePermission(p)}>
+                      <Text style={[styles.roleLabel, active && styles.roleLabelActive]}>{p}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <ActionButton
+                label="Save permissions"
+                onPress={handleSavePermissions}
+                loading={savingPermissions}
+                fullWidth
+                style={{ marginTop: theme.spacing.sm }}
+              />
+            </>
+          ) : null}
+        </ScrollView>
+      )}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
-    borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface,
-  },
-  headerTitle: { ...typography.h4, color: colors.text },
-  form: { padding: spacing.lg, paddingBottom: spacing.xxxl },
-  sectionTitle: {
-    ...typography.captionMedium, color: colors.textSecondary,
-    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: spacing.sm, marginTop: spacing.md,
-  },
-  roleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg },
-  roleCard: {
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md, borderWidth: 1.5, borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  roleCardActive: { borderColor: colors.primary, backgroundColor: colors.primary + '10' },
-  roleLabel: { ...typography.captionMedium, color: colors.textSecondary },
-  roleLabelActive: { color: colors.primary },
-  infoCard: {
-    backgroundColor: colors.info + '10', borderRadius: borderRadius.lg, padding: spacing.lg,
-  },
-  infoTitle: { ...typography.captionMedium, color: colors.info, marginBottom: spacing.xs },
-  infoText: { ...typography.caption, color: colors.text, lineHeight: 20 },
-});

@@ -23,17 +23,20 @@ const KPI_ITEMS: KPIItem[] = [
   { label: 'New App Users', key: 'new_app_users', format: 'number' },
 ];
 
-function formatValue(value: number, format: KPIItem['format']): string {
+function formatValue(value: number | null | undefined, format: KPIItem['format']): string {
+  const v = typeof value === 'number' && Number.isFinite(value) ? value : 0;
   switch (format) {
-    case 'currency': return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    case 'percent': return `${value.toFixed(1)}%`;
-    default: return value.toLocaleString();
+    case 'currency': return `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    case 'percent': return `${v.toFixed(1)}%`;
+    default: return v.toLocaleString();
   }
 }
 
-function getChangePercent(current: number, previous: number): number {
-  if (previous === 0) return current > 0 ? 100 : 0;
-  return ((current - previous) / previous) * 100;
+function getChangePercent(current: number | null | undefined, previous: number | null | undefined): number {
+  const c = typeof current === 'number' && Number.isFinite(current) ? current : 0;
+  const p = typeof previous === 'number' && Number.isFinite(previous) ? previous : 0;
+  if (p === 0) return c > 0 ? 100 : 0;
+  return ((c - p) / p) * 100;
 }
 
 export function KPICards({ data, compareEnabled }: KPICardsProps) {

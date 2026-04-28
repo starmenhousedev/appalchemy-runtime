@@ -1,5 +1,6 @@
+import { Platform } from 'react-native';
 import { StateCreator } from 'zustand';
-import { themesApi } from '../../api';
+import { themesApi, analyticsApi } from '../../api';
 import type { Theme, ImportedTheme } from '../../types';
 
 export interface ThemeSlice {
@@ -46,6 +47,13 @@ export const createThemeSlice: StateCreator<ThemeSlice> = (set, _get) => ({
     set(state => ({
       importedThemes: [...state.importedThemes, imported],
     }));
+    analyticsApi
+      .trackEvent({
+        event_type: 'theme_imported',
+        platform: Platform.OS,
+        metadata: { theme_id: themeId, imported_id: imported.id },
+      })
+      .catch(() => {});
     return imported;
   },
 

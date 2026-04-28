@@ -19,6 +19,7 @@ interface SectionListPanelProps {
   onDeleteSection: (sectionId: number) => void;
   onAddSection: () => void;
   onEditSection: (section: Section) => void;
+  onReorder?: (sectionIds: number[]) => void;
 }
 
 export function SectionListPanel({
@@ -29,11 +30,24 @@ export function SectionListPanel({
   onDeleteSection,
   onAddSection,
   onEditSection,
+  onReorder,
 }: SectionListPanelProps) {
   const sortedSections = [...sections].sort((a, b) => a.sort_order - b.sort_order);
 
   const getTypeLabel = (type: string) =>
     SECTION_TYPES.find(s => s.value === type)?.label || type.replace(/_/g, ' ');
+
+  const handleMove = (sectionId: number, direction: -1 | 1) => {
+    if (!onReorder) return;
+    const idx = sortedSections.findIndex(s => s.id === sectionId);
+    if (idx < 0) return;
+    const targetIdx = idx + direction;
+    if (targetIdx < 0 || targetIdx >= sortedSections.length) return;
+    const next = [...sortedSections];
+    const [moved] = next.splice(idx, 1);
+    next.splice(targetIdx, 0, moved);
+    onReorder(next.map(s => s.id));
+  };
 
   const handleLongPress = (section: Section) => {
     Alert.alert(section.title || getTypeLabel(section.type), 'Choose an action', [
@@ -53,8 +67,18 @@ export function SectionListPanel({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Sections</Text>
-        <TouchableOpacity style={styles.addButton} onPress={onAddSection}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerTitle}>Sections</Text>
+          {sortedSections.length > 0 && (
+            <View style={styles.countPill}>
+              <Text style={styles.countPillText}>{sortedSections.length}</Text>
+            </View>
+          )}
+        </View>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={onAddSection}
+          activeOpacity={0.8}>
           <Text style={styles.addIcon}>+</Text>
         </TouchableOpacity>
       </View>
@@ -62,7 +86,7 @@ export function SectionListPanel({
       <FlatList
         data={sortedSections}
         keyExtractor={item => item.id.toString()}
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
           <TouchableOpacity
             style={[
               styles.sectionItem,
@@ -73,7 +97,30 @@ export function SectionListPanel({
             onLongPress={() => handleLongPress(item)}
             activeOpacity={0.7}>
             <View style={styles.dragHandle}>
-              <Text style={styles.dragDots}>⠿</Text>
+              {onReorder ? (
+                <>
+                  <TouchableOpacity
+                    onPress={() => handleMove(item.id, -1)}
+                    disabled={index === 0}
+                    hitSlop={6}>
+                    <Text style={[styles.dragDots, index === 0 && { opacity: 0.3 }]}>↑</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleMove(item.id, 1)}
+                    disabled={index === sortedSections.length - 1}
+                    hitSlop={6}>
+                    <Text
+                      style={[
+                        styles.dragDots,
+                        index === sortedSections.length - 1 && { opacity: 0.3 },
+                      ]}>
+                      ↓
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <Text style={styles.dragDots}>⠿</Text>
+              )}
             </View>
             <View style={styles.typeIndicator}>
               <Text style={styles.typeInitial}>
@@ -106,8 +153,9 @@ export function SectionListPanel({
         )}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No sections</Text>
-            <Text style={styles.emptySubtext}>Tap + to add content</Text>
+            <Text style={styles.emptyIcon}>🧩</Text>
+            <Text style={styles.emptyText}>No sections yet</Text>
+            <Text style={styles.emptySubtext}>Tap + to start building this page</Text>
           </View>
         }
       />
@@ -119,12 +167,26 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2,
     borderBottomWidth: 1, borderBottomColor: colors.borderLight,
   },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   headerTitle: { ...typography.captionMedium, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  countPill: {
+    minWidth: 20,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: borderRadius.round,
+    backgroundColor: colors.surfaceSecondary,
+    alignItems: 'center',
+  },
+  countPillText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
   addButton: {
-    width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primary,
+    width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary,
     justifyContent: 'center', alignItems: 'center',
   },
   addIcon: { color: '#FFF', fontSize: 16, fontWeight: '600', lineHeight: 18 },
@@ -153,6 +215,12 @@ const styles = StyleSheet.create({
   visibilityIcon: { fontSize: 14, color: colors.primary },
   visibilityOff: { color: colors.textTertiary },
   emptyState: { padding: spacing.xxl, alignItems: 'center' },
-  emptyText: { ...typography.caption, color: colors.textTertiary },
-  emptySubtext: { ...typography.small, color: colors.textTertiary, marginTop: 2 },
+  emptyIcon: { fontSize: 24, marginBottom: spacing.xs },
+  emptyText: { ...typography.captionMedium, color: colors.textSecondary },
+  emptySubtext: {
+    ...typography.small,
+    color: colors.textTertiary,
+    marginTop: 2,
+    textAlign: 'center',
+  },
 });

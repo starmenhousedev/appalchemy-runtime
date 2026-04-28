@@ -1,34 +1,38 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Animated,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, borderRadius, spacing, typography, shadows } from '../../theme';
+import { useTheme } from '../../theme';
 import { useStore } from '../../store';
 import type { ToastMessage } from '../../store/slices/uiSlice';
 
-const toastColors: Record<ToastMessage['type'], { bg: string; text: string }> = {
-  success: { bg: colors.successLight, text: '#155724' },
-  error: { bg: colors.errorLight, text: '#721c24' },
-  warning: { bg: colors.warningLight, text: '#856404' },
-  info: { bg: colors.infoLight, text: '#0c5460' },
-};
-
 function ToastItem({ toast }: { toast: ToastMessage }) {
+  const theme = useTheme();
   const dismissToast = useStore(s => s.dismissToast);
-  const colorScheme = toastColors[toast.type];
+
+  const palette: Record<ToastMessage['type'], { bg: string; fg: string }> = {
+    success: { bg: theme.colors.successLight, fg: theme.colors.success },
+    error: { bg: theme.colors.errorLight, fg: theme.colors.error },
+    warning: { bg: theme.colors.warningLight, fg: theme.colors.warning },
+    info: { bg: theme.colors.infoLight, fg: theme.colors.info },
+  };
+  const c = palette[toast.type];
 
   return (
-    <Animated.View style={[styles.toast, { backgroundColor: colorScheme.bg }]}>
-      <Text style={[styles.toastText, { color: colorScheme.text }]}>
-        {toast.message}
-      </Text>
-      <TouchableOpacity onPress={() => dismissToast(toast.id)}>
-        <Text style={[styles.dismiss, { color: colorScheme.text }]}>x</Text>
+    <Animated.View
+      style={[
+        styles.toast,
+        theme.shadows.md,
+        {
+          backgroundColor: c.bg,
+          borderColor: c.fg + '40',
+          borderRadius: theme.borderRadius.md,
+          paddingHorizontal: theme.spacing.lg,
+          paddingVertical: theme.spacing.md,
+        },
+      ]}>
+      <Text style={[theme.typography.bodyMedium, { color: c.fg, flex: 1 }]}>{toast.message}</Text>
+      <TouchableOpacity onPress={() => dismissToast(toast.id)} hitSlop={8}>
+        <Text style={[styles.dismiss, { color: c.fg }]}>×</Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -41,7 +45,7 @@ export function ToastContainer() {
   if (toasts.length === 0) return null;
 
   return (
-    <View style={[styles.container, { top: insets.top + spacing.sm }]}>
+    <View style={[styles.container, { top: insets.top + 8 }]} pointerEvents="box-none">
       {toasts.map(toast => (
         <ToastItem key={toast.id} toast={toast} />
       ))}
@@ -52,25 +56,15 @@ export function ToastContainer() {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
+    left: 16,
+    right: 16,
     zIndex: 9999,
-    gap: spacing.sm,
+    gap: 8,
   },
   toast: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.md,
-    ...shadows.md,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  toastText: {
-    flex: 1,
-    ...typography.bodyMedium,
-  },
-  dismiss: {
-    ...typography.h4,
-    paddingLeft: spacing.md,
-  },
+  dismiss: { fontSize: 22, fontWeight: '600', paddingLeft: 12 },
 });

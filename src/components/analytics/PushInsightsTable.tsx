@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { colors, spacing, typography, borderRadius, shadows } from '../../theme';
 import type { PushInsight } from '../../types';
+import { safeNumber } from './utils';
 
 interface PushInsightsTableProps {
   title: string;
@@ -9,11 +10,12 @@ interface PushInsightsTableProps {
 }
 
 export function PushInsightsTable({ title, data }: PushInsightsTableProps) {
+  const safeData = Array.isArray(data) ? data.filter(Boolean) : [];
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{title}</Text>
 
-      {data.length > 0 ? (
+      {safeData.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View>
             {/* Header */}
@@ -28,43 +30,45 @@ export function PushInsightsTable({ title, data }: PushInsightsTableProps) {
             </View>
 
             {/* Rows */}
-            {data.map((insight, index) => (
-              <View
-                key={`${insight.campaign_name}-${index}`}
-                style={[styles.dataRow, index % 2 === 0 && styles.dataRowAlt]}>
-                <Text style={[styles.dataCell, styles.campaignCol]} numberOfLines={1}>
-                  {insight.campaign_name}
-                </Text>
-                <Text style={[styles.dataCell, styles.numCol]}>
-                  {insight.sent.toLocaleString()}
-                </Text>
-                <Text style={[styles.dataCell, styles.numCol]}>
-                  {insight.clicked.toLocaleString()}
-                </Text>
-                <Text style={[styles.dataCell, styles.numCol]}>
-                  {insight.add_to_cart.toLocaleString()}
-                </Text>
-                <Text style={[styles.dataCell, styles.numCol]}>
-                  {insight.orders.toLocaleString()}
-                </Text>
-                <Text style={[styles.dataCell, styles.revenueCol, styles.revenueText]}>
-                  ${insight.revenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </Text>
-                <View style={[styles.statusCol, styles.statusContainer]}>
-                  <View style={[
-                    styles.statusBadge,
-                    insight.status === 'active' ? styles.statusActive : styles.statusInactive,
-                  ]}>
-                    <Text style={[
-                      styles.statusText,
-                      insight.status === 'active' ? styles.statusTextActive : styles.statusTextInactive,
-                    ]}>
-                      {insight.status}
-                    </Text>
+            {safeData.map((insight, index) => {
+              const status = insight?.status ?? 'inactive';
+              const isActive = status === 'active';
+              return (
+                <View
+                  key={`${insight?.campaign_name ?? 'campaign'}-${index}`}
+                  style={[styles.dataRow, index % 2 === 0 && styles.dataRowAlt]}>
+                  <Text style={[styles.dataCell, styles.campaignCol]} numberOfLines={1}>
+                    {insight?.campaign_name ?? 'Untitled'}
+                  </Text>
+                  <Text style={[styles.dataCell, styles.numCol]}>
+                    {safeNumber(insight?.sent).toLocaleString()}
+                  </Text>
+                  <Text style={[styles.dataCell, styles.numCol]}>
+                    {safeNumber(insight?.clicked).toLocaleString()}
+                  </Text>
+                  <Text style={[styles.dataCell, styles.numCol]}>
+                    {safeNumber(insight?.add_to_cart).toLocaleString()}
+                  </Text>
+                  <Text style={[styles.dataCell, styles.numCol]}>
+                    {safeNumber(insight?.orders).toLocaleString()}
+                  </Text>
+                  <Text style={[styles.dataCell, styles.revenueCol, styles.revenueText]}>
+                    ${safeNumber(insight?.revenue).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </Text>
+                  <View style={[styles.statusCol, styles.statusContainer]}>
+                    <View style={[styles.statusBadge, isActive ? styles.statusActive : styles.statusInactive]}>
+                      <Text
+                        style={[
+                          styles.statusText,
+                          isActive ? styles.statusTextActive : styles.statusTextInactive,
+                        ]}>
+                        {status}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
         </ScrollView>
       ) : (
@@ -78,21 +82,31 @@ export function PushInsightsTable({ title, data }: PushInsightsTableProps) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.surface, borderRadius: borderRadius.lg,
-    padding: spacing.lg, ...shadows.sm,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    ...shadows.sm,
   },
   title: { ...typography.bodyMedium, color: colors.text, marginBottom: spacing.md },
   headerRow: {
-    flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border,
-    paddingBottom: spacing.sm, alignItems: 'center',
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingBottom: spacing.sm,
+    alignItems: 'center',
   },
   headerCell: {
-    ...typography.captionMedium, color: colors.textSecondary,
-    textTransform: 'uppercase', letterSpacing: 0.3,
+    ...typography.captionMedium,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   dataRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: spacing.sm, borderBottomWidth: 0.5, borderBottomColor: colors.borderLight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.borderLight,
   },
   dataRowAlt: { backgroundColor: colors.surfaceSecondary + '50' },
   campaignCol: { width: 150 },
@@ -103,7 +117,8 @@ const styles = StyleSheet.create({
   revenueText: { ...typography.captionMedium, color: colors.success },
   statusContainer: { alignItems: 'center' },
   statusBadge: {
-    paddingHorizontal: spacing.sm, paddingVertical: 2,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
     borderRadius: borderRadius.sm,
   },
   statusActive: { backgroundColor: colors.successLight },
@@ -112,8 +127,11 @@ const styles = StyleSheet.create({
   statusTextActive: { color: colors.success },
   statusTextInactive: { color: colors.textTertiary },
   emptyState: {
-    height: 80, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: colors.surfaceSecondary, borderRadius: borderRadius.md,
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: borderRadius.md,
   },
   emptyText: { ...typography.caption, color: colors.textTertiary },
 });

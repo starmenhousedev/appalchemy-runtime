@@ -3,10 +3,13 @@ import type { ApiResponse, Section, SectionType } from '../../types';
 
 export const sectionsApi = {
   async list(pageId: number) {
-    const { data } = await apiClient.get<ApiResponse<Section[]>>(
+    const { data } = await apiClient.get<ApiResponse<any>>(
       `/pages/${pageId}/sections`,
     );
-    return data.data;
+    const payload = data?.data;
+    if (Array.isArray(payload)) return payload as Section[];
+    if (payload && Array.isArray(payload.sections)) return payload.sections as Section[];
+    return [] as Section[];
   },
 
   async create(

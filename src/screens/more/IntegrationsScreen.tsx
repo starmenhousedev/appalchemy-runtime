@@ -1,17 +1,13 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  RefreshControl,
-} from 'react-native';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { integrationsApi } from '../../api';
 import { useStore } from '../../store';
-import { colors, spacing, typography, shadows, borderRadius } from '../../theme';
-import { Button } from '../../components/common/Button';
+import { useTheme } from '../../theme';
+import { AppHeader } from '../../components/common/AppHeader';
+import { ListItemCard } from '../../components/common/ListItemCard';
+import { StatusBadge } from '../../components/common/StatusBadge';
+import { LoadingState } from '../../components/common/LoadingState';
 import { INTEGRATION_PROVIDERS } from '../../utils/constants';
 import type { Integration } from '../../types';
 
@@ -27,6 +23,7 @@ const PROVIDER_ICONS: Record<string, string> = {
 };
 
 export function IntegrationsScreen({ navigation }: { navigation: any }) {
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
   const showToast = useStore(s => s.showToast);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
@@ -35,103 +32,89 @@ export function IntegrationsScreen({ navigation }: { navigation: any }) {
   const fetchIntegrations = useCallback(async () => {
     try {
       const data = await integrationsApi.list();
-      setIntegrations(data);
+      setIntegrations(Array.isArray(data) ? data : []);
     } catch {
       showToast('error', 'Failed to load integrations');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     fetchIntegrations();
   }, [fetchIntegrations]);
 
-  const getProviderLabel = (provider: string) =>
-    INTEGRATION_PROVIDERS.find(p => p.value === provider)?.label || provider;
-
-  const renderItem = ({ item }: { item: Integration }) => (
-    <TouchableOpacity
-      style={styles.card}
-      activeOpacity={0.7}
-      onPress={() => navigation.navigate('IntegrationDetail', { provider: item.provider })}>
-      <View style={[styles.iconBox, item.is_connected && styles.iconBoxConnected]}>
-        <Text style={[styles.iconText, item.is_connected && styles.iconTextConnected]}>
-          {PROVIDER_ICONS[item.provider] || item.provider.charAt(0).toUpperCase()}
-        </Text>
-      </View>
-      <View style={styles.cardInfo}>
-        <Text style={styles.providerName}>{getProviderLabel(item.provider)}</Text>
-        <Text style={[styles.statusText, item.is_connected ? styles.connected : styles.disconnected]}>
-          {item.is_connected ? 'Connected' : 'Not connected'}
-        </Text>
-      </View>
-      <Text style={styles.chevron}>{'>'}</Text>
-    </TouchableOpacity>
+  const allProviders = useMemo(
+    () =>
+      INTEGRATION_PROVIDERS.map(p => {
+        const existing = integrations.find(i => i.provider === p.value);
+        return (
+          existing ||
+          ({
+            id: 0,
+            shop_id: 0,
+            provider: p.value,
+            is_connected: false,
+            credentials: {},
+            settings: {},
+            connected_at: null,
+            createdAt: '',
+            updatedAt: '',
+          } as Integration)
+        );
+      }),
+    [integrations],
   );
 
-  // Show all available providers, merging with connected ones
-  const allProviders = INTEGRATION_PROVIDERS.map(p => {
-    const existing = integrations.find(i => i.provider === p.value);
-    return existing || {
-      id: 0,
-      shop_id: 0,
-      provider: p.value,
-      is_connected: false,
-      credentials: {},
-      settings: {},
-      connected_at: null,
-      createdAt: '',
-      updatedAt: '',
-    } as Integration;
-  });
+  const connectedCount = integrations.filter(i => i.is_connected).length;
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1, backgroundColor: theme.colors.background },
+        list: { padding: theme.spacing.lg, paddingBottom: theme.spacing.xxxl + insets.bottom, gap: theme.spacing.sm },
+      }),
+    [theme, insets.bottom],
+  );
+
+  const getLabel = (provider: string) =>
+    INTEGRATION_PROVIDERS.find(p => p.value === provider)?.label || provider;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Button title="Back" onPress={() => navigation.goBack()} variant="ghost" size="sm" />
-        <Text style={styles.headerTitle}>Integrations</Text>
-        <View style={{ width: 60 }} />
-      </View>
-
-      <FlatList
-        data={allProviders}
-        keyExtractor={item => item.provider}
-        renderItem={renderItem}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={fetchIntegrations} colors={[colors.primary]} />
-        }
+      <AppHeader
+        title="Integrations"
+        subtitle={`${connectedCount} connected · ${allProviders.length} available`}
+        onBack={() => navigation.goBack()}
       />
+      {loading ? (
+        <LoadingState message="Loading integrations…" />
+      ) : (
+        <FlatList
+          data={allProviders}
+          keyExtractor={item => item.provider}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={loading} onRefresh={fetchIntegrations} colors={[theme.colors.primary]} tintColor={theme.colors.primary} />
+          }
+          renderItem={({ item }) => (
+            <ListItemCard
+              title={getLabel(item.provider)}
+              subtitle={item.is_connected ? 'Connected · ready to use' : 'Tap to connect this service'}
+              iconLabel={PROVIDER_ICONS[item.provider] || item.provider.charAt(0).toUpperCase()}
+              iconColor={item.is_connected ? theme.colors.success : theme.colors.textSecondary}
+              badge={
+                <StatusBadge
+                  label={item.is_connected ? 'Connected' : 'Not connected'}
+                  tone={item.is_connected ? 'success' : 'neutral'}
+                  dot={item.is_connected}
+                />
+              }
+              onPress={() => navigation.navigate('IntegrationDetail', { provider: item.provider })}
+            />
+          )}
+        />
+      )}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
-    borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface,
-  },
-  headerTitle: { ...typography.h4, color: colors.text },
-  list: { padding: spacing.lg, paddingBottom: spacing.xxxl },
-  card: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    backgroundColor: colors.surface, borderRadius: borderRadius.lg,
-    padding: spacing.lg, marginBottom: spacing.sm, ...shadows.sm,
-  },
-  iconBox: {
-    width: 48, height: 48, borderRadius: borderRadius.md,
-    backgroundColor: colors.surfaceSecondary, justifyContent: 'center', alignItems: 'center',
-  },
-  iconBoxConnected: { backgroundColor: colors.primary + '15' },
-  iconText: { ...typography.h4, color: colors.textTertiary },
-  iconTextConnected: { color: colors.primary },
-  cardInfo: { flex: 1 },
-  providerName: { ...typography.bodyMedium, color: colors.text },
-  statusText: { ...typography.small, marginTop: 2 },
-  connected: { color: colors.success },
-  disconnected: { color: colors.textTertiary },
-  chevron: { ...typography.body, color: colors.textTertiary },
-});

@@ -8,11 +8,16 @@ import type {
 
 export const pushApi = {
   async list(tab?: 'scheduled' | 'sent' | 'automated') {
-    const { data } = await apiClient.get<ApiResponse<PushNotification[]>>(
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/push-notifications',
       { params: tab ? { tab } : undefined },
     );
-    return data.data;
+    const payload = data?.data;
+    if (Array.isArray(payload)) return payload as PushNotification[];
+    if (payload && Array.isArray(payload.notifications)) {
+      return payload.notifications as PushNotification[];
+    }
+    return [] as PushNotification[];
   },
 
   async create(notification: {
@@ -20,6 +25,7 @@ export const pushApi = {
     message: string;
     image_url?: string;
     link_url?: string;
+    scheduled_at?: string | null;
   }) {
     const { data } = await apiClient.post<ApiResponse<PushNotification>>(
       '/push-notifications',

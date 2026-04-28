@@ -57,7 +57,7 @@ react {
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
-def enableProguardInReleaseBuilds = false
+def enableProguardInReleaseBuilds = true
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -84,9 +84,10 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
-        ndk {
-            abiFilters "arm64-v8a"
-        }
+        // For Play Store distribution we want all four architectures so Google
+        // Play can split per-device APKs out of the Android App Bundle.
+        // (For local debug builds we still default to host architecture only,
+        //  which `react-native run-android` handles via -PreactNativeArchitectures.)
     }
     signingConfigs {
         debug {
@@ -95,15 +96,32 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            // Reads credentials from gradle.properties / ~/.gradle/gradle.properties /
+            // CI environment (-PMYAPP_RELEASE_STORE_PASSWORD=...). Only applied when all
+            // four properties are set; falls back to the debug key locally so dev builds
+            // still work without a release keystore on disk.
+            if (project.hasProperty('MYAPP_RELEASE_STORE_FILE') &&
+                project.hasProperty('MYAPP_RELEASE_KEY_ALIAS') &&
+                project.hasProperty('MYAPP_RELEASE_STORE_PASSWORD') &&
+                project.hasProperty('MYAPP_RELEASE_KEY_PASSWORD')) {
+                storeFile file(MYAPP_RELEASE_STORE_FILE)
+                keyAlias MYAPP_RELEASE_KEY_ALIAS
+                storePassword MYAPP_RELEASE_STORE_PASSWORD
+                keyPassword MYAPP_RELEASE_KEY_PASSWORD
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // Use the release keystore when it's configured; fall back to debug
+            // so local builds without a release key don't break.
+            signingConfig project.hasProperty('MYAPP_RELEASE_STORE_FILE')
+                ? signingConfigs.release
+                : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

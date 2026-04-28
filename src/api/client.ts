@@ -10,6 +10,19 @@ const apiClient = axios.create({
   },
 });
 
+// Lazy import to avoid the cycle:
+// client.ts → endpoints/auth.ts → client.ts.
+// authApi is loaded the first time refresh runs, after the module graph is initialised.
+type AuthApi = typeof import('./endpoints/auth')['authApi'];
+let cachedAuthApi: AuthApi | null = null;
+const getAuthApi = (): AuthApi => {
+  if (!cachedAuthApi) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    cachedAuthApi = require('./endpoints/auth').authApi as AuthApi;
+  }
+  return cachedAuthApi;
+};
+
 let isRefreshing = false;
 let failedQueue: Array<{
   resolve: (token: string) => void;
@@ -68,16 +81,8 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const currentToken = await storage.getToken();
-        const { data } = await axios.post(
-          `${API_BASE_URL}/auth/token/refresh`,
-          {},
-          {
-            headers: { Authorization: `Bearer ${currentToken}` },
-          },
-        );
-
-        const newToken = data.data?.token;
+        const refreshed = await getAuthApi().refreshToken();
+        const newToken = refreshed?.token;
         if (newToken) {
           await storage.setToken(newToken);
           processQueue(null, newToken);

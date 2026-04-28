@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,17 +11,20 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { pushApi } from '../../api';
 import { useStore } from '../../store';
-import { colors, spacing, typography, shadows, borderRadius } from '../../theme';
-import { AUTOMATED_PUSH_TYPES } from '../../utils/constants';
+import { useTheme } from '../../theme';
+import { AppHeader } from '../../components/common/AppHeader';
+import { ActionButton } from '../../components/common/ActionButton';
 import { Input } from '../../components/common/Input';
-import { Button } from '../../components/common/Button';
+import { EmptyState } from '../../components/common/EmptyState';
+import { LoadingState } from '../../components/common/LoadingState';
+import { AUTOMATED_PUSH_TYPES } from '../../utils/constants';
 import type { AutomatedPush, AutomatedPushType } from '../../types';
 
-const TYPE_ICONS: Record<AutomatedPushType, string> = {
-  new_user: 'U',
-  abandoned_cart: 'C',
-  back_in_stock: 'S',
-  order_tracking: 'T',
+const TYPE_GLYPHS: Record<AutomatedPushType, string> = {
+  new_user: '✦',
+  abandoned_cart: '⌃',
+  back_in_stock: '↻',
+  order_tracking: '⤴',
 };
 
 const TYPE_DESCRIPTIONS: Record<AutomatedPushType, string> = {
@@ -32,8 +35,10 @@ const TYPE_DESCRIPTIONS: Record<AutomatedPushType, string> = {
 };
 
 export function AutomatedPushScreen({ navigation }: { navigation: any }) {
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
   const showToast = useStore(s => s.showToast);
+
   const [automations, setAutomations] = useState<AutomatedPush[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingType, setEditingType] = useState<AutomatedPushType | null>(null);
@@ -51,7 +56,7 @@ export function AutomatedPushScreen({ navigation }: { navigation: any }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     fetchAutomations();
@@ -71,10 +76,6 @@ export function AutomatedPushScreen({ navigation }: { navigation: any }) {
     setEditTitle(item.title);
     setEditMessage(item.message);
     setEditDelay(item.delay_minutes.toString());
-  };
-
-  const cancelEditing = () => {
-    setEditingType(null);
   };
 
   const handleSave = async () => {
@@ -99,37 +100,78 @@ export function AutomatedPushScreen({ navigation }: { navigation: any }) {
   const getTypeLabel = (type: AutomatedPushType) =>
     AUTOMATED_PUSH_TYPES.find(t => t.value === type)?.label || type;
 
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1, backgroundColor: theme.colors.background },
+        list: { padding: theme.spacing.lg, paddingBottom: theme.spacing.xxxl + insets.bottom, gap: theme.spacing.sm },
+        card: {
+          backgroundColor: theme.colors.surface,
+          borderRadius: theme.borderRadius.lg,
+          padding: theme.spacing.lg,
+          borderColor: theme.colors.borderLight,
+          borderWidth: StyleSheet.hairlineWidth,
+          ...theme.shadows.sm,
+        },
+        cardHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+        glyphBox: {
+          width: 44,
+          height: 44,
+          borderRadius: theme.borderRadius.md,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        glyphText: { fontSize: 20, fontWeight: '700' },
+        cardTitle: { ...theme.typography.bodyMedium, color: theme.colors.text },
+        cardDesc: { ...theme.typography.small, color: theme.colors.textTertiary, marginTop: 2 },
+        previewSection: {
+          marginTop: theme.spacing.md,
+          paddingTop: theme.spacing.md,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: theme.colors.divider,
+        },
+        previewRow: { flexDirection: 'row', gap: theme.spacing.sm, marginBottom: theme.spacing.xs },
+        previewLabel: { ...theme.typography.caption, color: theme.colors.textTertiary, width: 64 },
+        previewValue: { ...theme.typography.caption, color: theme.colors.text, flex: 1 },
+        editLink: { ...theme.typography.captionMedium, color: theme.colors.primary, marginTop: theme.spacing.sm, alignSelf: 'flex-start' },
+        editSection: {
+          marginTop: theme.spacing.md,
+          paddingTop: theme.spacing.md,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: theme.colors.divider,
+          gap: theme.spacing.sm,
+        },
+        editActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: theme.spacing.sm, marginTop: theme.spacing.sm },
+      }),
+    [theme, insets.bottom],
+  );
+
   const renderItem = ({ item }: { item: AutomatedPush }) => {
     const isEditing = editingType === item.type;
-
+    const accent = item.is_active ? theme.colors.primary : theme.colors.textTertiary;
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <View style={[styles.iconBox, item.is_active && styles.iconBoxActive]}>
-            <Text style={[styles.iconText, item.is_active && styles.iconTextActive]}>
-              {TYPE_ICONS[item.type]}
-            </Text>
+          <View style={[styles.glyphBox, { backgroundColor: accent + '22' }]}>
+            <Text style={[styles.glyphText, { color: accent }]}>{TYPE_GLYPHS[item.type]}</Text>
           </View>
-          <View style={styles.cardInfo}>
+          <View style={{ flex: 1 }}>
             <Text style={styles.cardTitle}>{getTypeLabel(item.type)}</Text>
-            <Text style={styles.cardDesc}>{TYPE_DESCRIPTIONS[item.type]}</Text>
+            <Text style={styles.cardDesc} numberOfLines={2}>
+              {TYPE_DESCRIPTIONS[item.type]}
+            </Text>
           </View>
           <Switch
             value={item.is_active}
             onValueChange={() => handleToggle(item.type)}
-            trackColor={{ false: colors.border, true: colors.primaryLight }}
-            thumbColor={item.is_active ? colors.primary : colors.textTertiary}
+            trackColor={{ false: theme.colors.border, true: theme.colors.primaryLight }}
+            thumbColor={item.is_active ? theme.colors.primary : theme.colors.textTertiary}
           />
         </View>
 
         {isEditing ? (
           <View style={styles.editSection}>
-            <Input
-              label="Title"
-              value={editTitle}
-              onChangeText={setEditTitle}
-              placeholder="Notification title"
-            />
+            <Input label="Title" value={editTitle} onChangeText={setEditTitle} placeholder="Notification title" />
             <Input
               label="Message"
               value={editMessage}
@@ -146,28 +188,30 @@ export function AutomatedPushScreen({ navigation }: { navigation: any }) {
               placeholder="0"
             />
             <View style={styles.editActions}>
-              <Button title="Cancel" onPress={cancelEditing} variant="ghost" size="sm" />
-              <Button title="Save" onPress={handleSave} size="sm" loading={saving} />
+              <ActionButton label="Cancel" variant="ghost" size="sm" onPress={() => setEditingType(null)} />
+              <ActionButton label="Save" size="sm" loading={saving} onPress={handleSave} />
             </View>
           </View>
         ) : (
           <View style={styles.previewSection}>
             <View style={styles.previewRow}>
-              <Text style={styles.previewLabel}>Title:</Text>
-              <Text style={styles.previewValue} numberOfLines={1}>{item.title}</Text>
+              <Text style={styles.previewLabel}>Title</Text>
+              <Text style={styles.previewValue} numberOfLines={1}>
+                {item.title}
+              </Text>
             </View>
             <View style={styles.previewRow}>
-              <Text style={styles.previewLabel}>Message:</Text>
-              <Text style={styles.previewValue} numberOfLines={2}>{item.message}</Text>
+              <Text style={styles.previewLabel}>Message</Text>
+              <Text style={styles.previewValue} numberOfLines={2}>
+                {item.message}
+              </Text>
             </View>
             <View style={styles.previewRow}>
-              <Text style={styles.previewLabel}>Delay:</Text>
+              <Text style={styles.previewLabel}>Delay</Text>
               <Text style={styles.previewValue}>{item.delay_minutes} min</Text>
             </View>
-            <TouchableOpacity
-              style={styles.editButton}
-              onPress={() => startEditing(item)}>
-              <Text style={styles.editButtonText}>Edit</Text>
+            <TouchableOpacity onPress={() => startEditing(item)}>
+              <Text style={styles.editLink}>Edit</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -177,79 +221,32 @@ export function AutomatedPushScreen({ navigation }: { navigation: any }) {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Button title="Back" onPress={() => navigation.goBack()} variant="ghost" size="sm" />
-        <Text style={styles.headerTitle}>Automated Push</Text>
-        <View style={{ width: 60 }} />
-      </View>
-
-      <FlatList
-        data={automations}
-        keyExtractor={item => item.type}
-        renderItem={renderItem}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={fetchAutomations} colors={[colors.primary]} />
-        }
-        ListEmptyComponent={
-          !loading ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No automations configured</Text>
-              <Text style={styles.emptySubtitle}>
-                Automated push notifications will appear here once configured by the system.
-              </Text>
-            </View>
-          ) : null
-        }
-      />
+      <AppHeader title="Automated Push" onBack={() => navigation.goBack()} />
+      {loading ? (
+        <LoadingState message="Loading automations…" />
+      ) : (
+        <FlatList
+          data={automations}
+          keyExtractor={item => item.type}
+          renderItem={renderItem}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={fetchAutomations}
+              colors={[theme.colors.primary]}
+              tintColor={theme.colors.primary}
+            />
+          }
+          ListEmptyComponent={
+            <EmptyState
+              icon="⌘"
+              title="No automations configured"
+              description="Automated push notifications will appear here once configured by the system."
+            />
+          }
+        />
+      )}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
-    borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface,
-  },
-  headerTitle: { ...typography.h4, color: colors.text },
-  list: { padding: spacing.lg, paddingBottom: spacing.xxxl },
-  card: {
-    backgroundColor: colors.surface, borderRadius: borderRadius.lg,
-    padding: spacing.lg, marginBottom: spacing.md, ...shadows.sm,
-  },
-  cardHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-  },
-  iconBox: {
-    width: 44, height: 44, borderRadius: borderRadius.md,
-    backgroundColor: colors.surfaceSecondary,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  iconBoxActive: { backgroundColor: colors.primary + '15' },
-  iconText: { ...typography.h4, color: colors.textTertiary },
-  iconTextActive: { color: colors.primary },
-  cardInfo: { flex: 1 },
-  cardTitle: { ...typography.bodyMedium, color: colors.text },
-  cardDesc: { ...typography.small, color: colors.textTertiary, marginTop: 2 },
-  previewSection: {
-    marginTop: spacing.md, paddingTop: spacing.md,
-    borderTopWidth: 1, borderTopColor: colors.borderLight,
-  },
-  previewRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xs },
-  previewLabel: { ...typography.caption, color: colors.textTertiary, width: 60 },
-  previewValue: { ...typography.caption, color: colors.text, flex: 1 },
-  editButton: { marginTop: spacing.sm, alignSelf: 'flex-start' },
-  editButtonText: { ...typography.captionMedium, color: colors.primary },
-  editSection: {
-    marginTop: spacing.md, paddingTop: spacing.md,
-    borderTopWidth: 1, borderTopColor: colors.borderLight,
-  },
-  editActions: {
-    flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.sm,
-  },
-  emptyState: { padding: 60, alignItems: 'center' },
-  emptyTitle: { ...typography.h3, color: colors.text, marginBottom: spacing.xs },
-  emptySubtitle: { ...typography.body, color: colors.textSecondary, textAlign: 'center' },
-});

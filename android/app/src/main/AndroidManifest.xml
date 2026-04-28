@@ -28,7 +28,7 @@
             <category android:name="android.intent.category.BROWSABLE" />
             <data
                 android:scheme="https"
-                android:host="assets.deodap.in"
+                android:host="analytics.deodap.in"
                 android:pathPrefix="/api/auth/mobile-complete" />
         </intent-filter>
       </activity>

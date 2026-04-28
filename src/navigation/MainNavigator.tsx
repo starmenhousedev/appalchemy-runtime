@@ -1,182 +1,175 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Image,
-} from 'react-native';
+import React, { useMemo } from 'react';
+import { View, StyleSheet, Alert } from 'react-native';
 import {
   createDrawerNavigator,
   DrawerContentScrollView,
-  DrawerItemList,
   DrawerContentComponentProps,
 } from '@react-navigation/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../store';
+import { DashboardNavigator } from './DashboardNavigator';
 import { DesignNavigator } from './DesignNavigator';
 import { AnalyticsNavigator } from './AnalyticsNavigator';
 import { DiscountsNavigator } from './DiscountsNavigator';
 import { PushNavigator } from './PushNavigator';
 import { MoreNavigator } from './MoreNavigator';
-import { colors, spacing, typography, borderRadius } from '../theme';
-import type { DrawerParamList } from './types';
+import { useTheme } from '../theme';
+import {
+  DrawerHeader,
+  DrawerSection,
+  DrawerItem,
+  DrawerFooter,
+  DrawerBadge,
+} from '../components/drawer';
+import type { DrawerParamList, MoreStackParamList } from './types';
 
 const Drawer = createDrawerNavigator<DrawerParamList>();
+
+interface MainEntry {
+  key: keyof DrawerParamList;
+  label: string;
+  icon: string;
+  badge?: DrawerBadge;
+}
+
+interface ManagementEntry {
+  key: string;
+  label: string;
+  icon: string;
+  moreScreen: keyof MoreStackParamList;
+  badge?: DrawerBadge;
+}
+
+const MAIN_ITEMS: MainEntry[] = [
+  { key: 'Dashboard', label: 'Dashboard', icon: '⌂' },
+  { key: 'Design', label: 'Design', icon: '◫' },
+  { key: 'Analytics', label: 'Analytics', icon: '◔' },
+  { key: 'Discounts', label: 'Discounts', icon: '%' },
+  { key: 'Push', label: 'Push Notifications', icon: '⌘' },
+];
+
+const MANAGEMENT_ITEMS: ManagementEntry[] = [
+  { key: 'manage-themes', label: 'Manage Themes', icon: '◫', moreScreen: 'ManageThemes' },
+  { key: 'integrations', label: 'Integrations', icon: '⚯', moreScreen: 'Integrations' },
+  { key: 'users', label: 'Users', icon: '◉', moreScreen: 'ManageUsers' },
+  { key: 'billing', label: 'Billing', icon: '$', moreScreen: 'Billing' },
+  { key: 'settings', label: 'Settings', icon: '⚙', moreScreen: 'MoreMenu' },
+];
+
+interface NestedNavState {
+  index: number;
+  routes: { name: string }[];
+}
 
 function CustomDrawerContent(props: DrawerContentComponentProps) {
   const shop = useStore(s => s.shop);
   const logout = useStore(s => s.logout);
   const insets = useSafeAreaInsets();
+  const theme = useTheme();
+
+  const drawerState = props.state;
+  const activeDrawerName = drawerState.routeNames[drawerState.index] as keyof DrawerParamList;
+  const activeRoute = drawerState.routes[drawerState.index];
+  const nestedState = activeRoute.state as NestedNavState | undefined;
+  const activeNestedScreen = nestedState?.routes?.[nestedState.index]?.name;
+
+  const navigateMain = (key: keyof DrawerParamList) => {
+    props.navigation.navigate(key);
+  };
+
+  const navigateManagement = (entry: ManagementEntry) => {
+    // Cross-stack: open More drawer route, navigate to the inner screen.
+    props.navigation.navigate('More', { screen: entry.moreScreen } as never);
+  };
+
+  const handleLogout = () => {
+    Alert.alert('Log out', 'Are you sure you want to log out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log out', style: 'destructive', onPress: () => logout() },
+    ]);
+  };
+
+  const status = useMemo(
+    () => (shop ? { label: 'Connected', tone: 'success' as const } : { label: 'Not connected', tone: 'neutral' as const }),
+    [shop],
+  );
 
   return (
-    <View style={styles.drawerContainer}>
-      <DrawerContentScrollView {...props} contentContainerStyle={styles.drawerScroll}>
-        <View style={[styles.drawerHeader, { paddingTop: insets.top + spacing.md }]}>
-          <View style={styles.logoContainer}>
-            <View style={styles.logoIcon}>
-              <Text style={styles.logoText}>A</Text>
-            </View>
-            <View style={styles.logoInfo}>
-              <Text style={styles.appTitle}>AppAlchemy</Text>
-              <Text style={styles.shopName} numberOfLines={1}>
-                {shop?.shop_name || shop?.shop_domain || 'My Store'}
-              </Text>
-            </View>
-          </View>
-        </View>
+    <View style={[styles.drawer, { backgroundColor: theme.colors.drawerBg }]}>
+      <DrawerContentScrollView {...props} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <DrawerHeader
+          appName="AppAlchemy"
+          shopName={shop?.shop_name || shop?.shop_domain || 'My Store'}
+          paddingTop={insets.top}
+          status={status}
+        />
 
-        <View style={styles.drawerItems}>
-          <DrawerItemList {...props} />
-        </View>
+        <DrawerSection title="Main" showDivider>
+          {MAIN_ITEMS.map(item => {
+            const active = item.key === activeDrawerName;
+            return (
+              <DrawerItem
+                key={item.key}
+                icon={item.icon}
+                label={item.label}
+                active={active}
+                badge={item.badge}
+                onPress={() => navigateMain(item.key)}
+              />
+            );
+          })}
+        </DrawerSection>
+
+        <DrawerSection title="Management" showDivider>
+          {MANAGEMENT_ITEMS.map(item => {
+            const active = activeDrawerName === 'More' && activeNestedScreen === item.moreScreen;
+            return (
+              <DrawerItem
+                key={item.key}
+                icon={item.icon}
+                label={item.label}
+                active={active}
+                badge={item.badge}
+                onPress={() => navigateManagement(item)}
+              />
+            );
+          })}
+        </DrawerSection>
       </DrawerContentScrollView>
 
-      <View style={[styles.drawerFooter, { paddingBottom: insets.bottom + spacing.md }]}>
-        <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-          <Text style={styles.logoutText}>Log Out</Text>
-        </TouchableOpacity>
-      </View>
+      <DrawerFooter
+        version="1.0.0"
+        onLogout={handleLogout}
+        paddingBottom={insets.bottom}
+      />
     </View>
   );
 }
 
 export function MainNavigator() {
+  const theme = useTheme();
   return (
     <Drawer.Navigator
+      initialRouteName="Dashboard"
       drawerContent={props => <CustomDrawerContent {...props} />}
       screenOptions={{
         headerShown: false,
         drawerType: 'front',
-        drawerStyle: styles.drawer,
-        drawerActiveTintColor: colors.textInverse,
-        drawerInactiveTintColor: colors.drawerText,
-        drawerActiveBackgroundColor: colors.drawerActiveBg,
-        drawerLabelStyle: styles.drawerLabel,
-        drawerItemStyle: styles.drawerItem,
+        drawerStyle: { width: 300, backgroundColor: theme.colors.drawerBg },
+        overlayColor: theme.colors.overlay,
+        swipeEdgeWidth: 32,
       }}>
-      <Drawer.Screen
-        name="Design"
-        component={DesignNavigator}
-        options={{ drawerLabel: 'Design' }}
-      />
-      <Drawer.Screen
-        name="Analytics"
-        component={AnalyticsNavigator}
-        options={{ drawerLabel: 'Analytics' }}
-      />
-      <Drawer.Screen
-        name="Discounts"
-        component={DiscountsNavigator}
-        options={{ drawerLabel: 'Discounts' }}
-      />
-      <Drawer.Screen
-        name="Push"
-        component={PushNavigator}
-        options={{ drawerLabel: 'Push Notifications' }}
-      />
-      <Drawer.Screen
-        name="More"
-        component={MoreNavigator}
-        options={{ drawerLabel: 'More' }}
-      />
+      <Drawer.Screen name="Dashboard" component={DashboardNavigator} />
+      <Drawer.Screen name="Design" component={DesignNavigator} />
+      <Drawer.Screen name="Analytics" component={AnalyticsNavigator} />
+      <Drawer.Screen name="Discounts" component={DiscountsNavigator} />
+      <Drawer.Screen name="Push" component={PushNavigator} />
+      <Drawer.Screen name="More" component={MoreNavigator} />
     </Drawer.Navigator>
   );
 }
 
 const styles = StyleSheet.create({
-  drawerContainer: {
-    flex: 1,
-    backgroundColor: colors.drawerBg,
-  },
-  drawerScroll: {
-    flex: 1,
-  },
-  drawer: {
-    width: 280,
-    backgroundColor: colors.drawerBg,
-  },
-  drawerHeader: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xxl,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-    marginBottom: spacing.md,
-  },
-  logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  logoIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.textInverse,
-  },
-  logoInfo: {
-    flex: 1,
-  },
-  appTitle: {
-    ...typography.bodyMedium,
-    color: colors.textInverse,
-  },
-  shopName: {
-    ...typography.caption,
-    color: colors.drawerText,
-    opacity: 0.7,
-  },
-  drawerItems: {
-    paddingHorizontal: spacing.sm,
-  },
-  drawerLabel: {
-    ...typography.bodyMedium,
-    marginLeft: -spacing.lg,
-  },
-  drawerItem: {
-    borderRadius: borderRadius.md,
-    marginVertical: 2,
-    paddingVertical: 2,
-  },
-  drawerFooter: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
-  },
-  logoutButton: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.md,
-  },
-  logoutText: {
-    ...typography.bodyMedium,
-    color: colors.error,
-  },
+  drawer: { flex: 1 },
+  scroll: { flexGrow: 1, paddingBottom: 8 },
 });

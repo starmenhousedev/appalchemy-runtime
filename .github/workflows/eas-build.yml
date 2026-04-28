@@ -1,0 +1,139 @@
+name: EAS Build & Publish
+
+# Triggered either:
+#   - manually via the GitHub Actions UI ("Run workflow")
+#   - programmatically by the backend via repository_dispatch event "appengine-build"
+#
+# Required GitHub repo secrets (Settings → Secrets and variables → Actions):
+#   EXPO_TOKEN              - Personal access token from https://expo.dev/settings/access-tokens
+#   APPENGINE_API_BASE      - e.g. https://analytics.deodap.in
+#   APPENGINE_WEBHOOK_TOKEN - Random string. Same value MUST be in backend .env (BUILD_WEBHOOK_TOKEN).
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: 'AppEngineX Build row ID (used to call back when finished)'
+        required: true
+      platform:
+        description: 'Build platform (android | ios | all)'
+        required: true
+        default: 'all'
+      profile:
+        description: 'EAS profile (production | preview | development)'
+        required: true
+        default: 'production'
+  repository_dispatch:
+    types: [appengine-build]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve inputs
+        id: inputs
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "build_id=${{ github.event.client_payload.build_id }}" >> $GITHUB_OUTPUT
+            echo "platform=${{ github.event.client_payload.platform }}" >> $GITHUB_OUTPUT
+            echo "profile=${{ github.event.client_payload.profile }}" >> $GITHUB_OUTPUT
+          else
+            echo "build_id=${{ github.event.inputs.build_id }}" >> $GITHUB_OUTPUT
+            echo "platform=${{ github.event.inputs.platform }}" >> $GITHUB_OUTPUT
+            echo "profile=${{ github.event.inputs.profile }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Notify backend (building)
+        run: |
+          curl -fsS -X POST "${{ secrets.APPENGINE_API_BASE }}/api/webhooks/build-status" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Token: ${{ secrets.APPENGINE_WEBHOOK_TOKEN }}" \
+            -d '{
+              "build_id": "${{ steps.inputs.outputs.build_id }}",
+              "status": "building",
+              "github_run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }' || echo "(notify failed; build will continue)"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build
+        id: build
+        run: |
+          set -e
+          PLATFORM="${{ steps.inputs.outputs.platform }}"
+          PROFILE="${{ steps.inputs.outputs.profile }}"
+          # `--json --non-interactive` returns a JSON array of build records (one per platform)
+          OUTPUT=$(eas build --non-interactive --json --platform "$PLATFORM" --profile "$PROFILE" --no-wait)
+          echo "$OUTPUT" > build-records.json
+          # Each record has: id (EAS internal id), platform, status, artifacts.buildUrl (set later)
+          # We don't have URLs yet because --no-wait; we report status='building' + EAS build IDs.
+          IDS=$(jq -r 'map(.id) | join(",")' build-records.json)
+          echo "eas_build_ids=$IDS" >> $GITHUB_OUTPUT
+
+      - name: Wait for builds and resolve artifact URLs
+        id: wait
+        run: |
+          set -e
+          IFS=',' read -ra IDS <<< "${{ steps.build.outputs.eas_build_ids }}"
+          ANDROID_URL=""
+          IOS_URL=""
+          OVERALL_STATUS="completed"
+          for id in "${IDS[@]}"; do
+            echo "Waiting for EAS build $id …"
+            # Poll EAS until the build leaves a non-final state. eas build:view --json gives status + artifacts.
+            for _ in $(seq 1 120); do
+              VIEW=$(eas build:view "$id" --json 2>/dev/null || true)
+              STATUS=$(echo "$VIEW" | jq -r '.status // empty')
+              if [ "$STATUS" = "FINISHED" ] || [ "$STATUS" = "ERRORED" ] || [ "$STATUS" = "CANCELED" ]; then
+                break
+              fi
+              sleep 30
+            done
+            STATUS=$(echo "$VIEW" | jq -r '.status // empty')
+            URL=$(echo "$VIEW" | jq -r '.artifacts.buildUrl // empty')
+            PLATFORM=$(echo "$VIEW" | jq -r '.platform // empty')
+            if [ "$STATUS" != "FINISHED" ]; then
+              OVERALL_STATUS="failed"
+            fi
+            if [ "$PLATFORM" = "ANDROID" ]; then ANDROID_URL="$URL"; fi
+            if [ "$PLATFORM" = "IOS" ]; then IOS_URL="$URL"; fi
+          done
+          echo "android_url=$ANDROID_URL" >> $GITHUB_OUTPUT
+          echo "ios_url=$IOS_URL" >> $GITHUB_OUTPUT
+          echo "overall_status=$OVERALL_STATUS" >> $GITHUB_OUTPUT
+
+      - name: Notify backend (final)
+        if: always()
+        run: |
+          STATUS="${{ steps.wait.outputs.overall_status }}"
+          if [ -z "$STATUS" ] || [ "${{ job.status }}" = "failure" ] || [ "${{ job.status }}" = "cancelled" ]; then
+            STATUS="failed"
+          fi
+          ANDROID_URL="${{ steps.wait.outputs.android_url }}"
+          IOS_URL="${{ steps.wait.outputs.ios_url }}"
+          curl -fsS -X POST "${{ secrets.APPENGINE_API_BASE }}/api/webhooks/build-status" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Token: ${{ secrets.APPENGINE_WEBHOOK_TOKEN }}" \
+            -d "$(jq -n \
+              --arg build_id "${{ steps.inputs.outputs.build_id }}" \
+              --arg status "$STATUS" \
+              --arg android_url "$ANDROID_URL" \
+              --arg ios_url "$IOS_URL" \
+              --arg run_url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              '{build_id:$build_id,status:$status,android_url:$android_url,ios_url:$ios_url,github_run_url:$run_url}')"

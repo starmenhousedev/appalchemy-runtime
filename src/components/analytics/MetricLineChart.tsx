@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { colors, spacing, typography, borderRadius, shadows } from '../../theme';
 import type { DailyMetric } from '../../types';
+import { safeNumber } from './utils';
 
 interface MetricLineChartProps {
   title: string;
@@ -31,18 +32,19 @@ export function MetricLineChart({
   const chartWidth = screenWidth - spacing.lg * 4;
 
   const chartData = useMemo(() => {
-    if (!data || data.length === 0) return null;
+    const safeData = Array.isArray(data) ? data.filter(Boolean) : [];
+    if (safeData.length === 0) return null;
 
-    const labels = data.map(d => {
-      const parts = d.date.split('-');
-      return `${parts[1]}/${parts[2]}`;
+    const labels = safeData.map(d => {
+      const parts = (d?.date ?? '').split('-');
+      return parts.length >= 3 ? `${parts[1]}/${parts[2]}` : '';
     });
 
     // Show max 7 labels to avoid crowding
     const step = Math.max(1, Math.floor(labels.length / 6));
     const displayLabels = labels.map((l, i) => (i % step === 0 ? l : ''));
 
-    const currentValues = data.map(d => d.value);
+    const currentValues = safeData.map(d => safeNumber(d?.value));
     const datasets: Array<{
       data: number[];
       color?: (opacity: number) => string;
@@ -55,10 +57,10 @@ export function MetricLineChart({
       },
     ];
 
-    const hasCompare = compareEnabled && data.some(d => d.compare_value != null);
+    const hasCompare = compareEnabled && safeData.some(d => d?.compare_value != null);
     if (hasCompare) {
       datasets.push({
-        data: data.map(d => d.compare_value ?? 0),
+        data: safeData.map(d => safeNumber(d?.compare_value)),
         color: (opacity: number) => `rgba(173, 181, 189, ${opacity})`,
         strokeWidth: 1.5,
       });
@@ -78,7 +80,7 @@ export function MetricLineChart({
     );
   }
 
-  const latestValue = chartData.currentValues[chartData.currentValues.length - 1] ?? 0;
+  const latestValue = safeNumber(chartData.currentValues[chartData.currentValues.length - 1]);
   const displayValue = formatValue
     ? formatValue(latestValue)
     : `${latestValue.toLocaleString()}${suffix}`;

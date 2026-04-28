@@ -13,6 +13,9 @@ import { ManageUsersScreen } from '../screens/more/ManageUsersScreen';
 import { UserFormScreen } from '../screens/more/UserFormScreen';
 import { BillingScreen } from '../screens/more/BillingScreen';
 import { PublishScreen } from '../screens/more/PublishScreen';
+import { MediaLibraryScreen } from '../screens/more/MediaLibraryScreen';
+import { ShopifyDataScreen } from '../screens/more/ShopifyDataScreen';
+import { ThemeCatalogScreen } from '../screens/more/ThemeCatalogScreen';
 import type { MoreStackParamList } from './types';
 
 const Stack = createStackNavigator<MoreStackParamList>();
@@ -33,6 +36,9 @@ export function MoreNavigator() {
       <Stack.Screen name="UserForm" component={UserFormScreen as any} />
       <Stack.Screen name="Billing" component={BillingScreen} />
       <Stack.Screen name="Publish" component={PublishScreen} />
+      <Stack.Screen name="MediaLibrary" component={MediaLibraryScreen} />
+      <Stack.Screen name="ShopifyData" component={ShopifyDataScreen} />
+      <Stack.Screen name="ThemeCatalog" component={ThemeCatalogScreen} />
     </Stack.Navigator>
   );
 }

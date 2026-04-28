@@ -1,4 +1,4 @@
-const MOBILE_AUTH_HOST = 'assets.deodap.in';
+const MOBILE_AUTH_HOST = 'analytics.deodap.in';
 const MOBILE_AUTH_PATH = '/api/auth/mobile-complete';
 
 export interface AuthCallbackParams {

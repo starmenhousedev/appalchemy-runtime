@@ -43,8 +43,7 @@ export interface ProductLabel {
 }
 
 export interface ProductSortingConfig {
-  default_sort: string;
-  options: string[];
+  order: string;
 }
 
 export interface CartGoal {

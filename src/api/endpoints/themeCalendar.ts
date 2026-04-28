@@ -3,10 +3,11 @@ import type { ApiResponse, ThemeCalendarEntry } from '../../types';
 
 export const themeCalendarApi = {
   async list() {
-    const { data } = await apiClient.get<ApiResponse<ThemeCalendarEntry[]>>(
-      '/theme-calendar',
-    );
-    return data.data;
+    const { data } = await apiClient.get<ApiResponse<any>>('/theme-calendar');
+    const payload = data?.data;
+    if (Array.isArray(payload)) return payload as ThemeCalendarEntry[];
+    if (payload && Array.isArray(payload.entries)) return payload.entries as ThemeCalendarEntry[];
+    return [] as ThemeCalendarEntry[];
   },
 
   async create(entry: {

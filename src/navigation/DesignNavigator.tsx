@@ -6,6 +6,7 @@ import { SectionEditorScreen } from '../screens/design/SectionEditorScreen';
 import { BottomBarEditorScreen } from '../screens/design/BottomBarEditorScreen';
 import { ThemeSettingsScreen } from '../screens/design/ThemeSettingsScreen';
 import { ThemeCodeScreen } from '../screens/design/ThemeCodeScreen';
+import { PreviewScreen } from '../screens/design/PreviewScreen';
 import type { DesignStackParamList } from './types';
 
 const Stack = createStackNavigator<DesignStackParamList>();
@@ -19,6 +20,7 @@ export function DesignNavigator() {
       <Stack.Screen name="BottomBarEditor" component={BottomBarEditorScreen as any} />
       <Stack.Screen name="ThemeSettings" component={ThemeSettingsScreen as any} />
       <Stack.Screen name="ThemeCode" component={ThemeCodeScreen as any} />
+      <Stack.Screen name="Preview" component={PreviewScreen as any} />
     </Stack.Navigator>
   );
 }

@@ -24,117 +24,140 @@ function buildParams(params: AnalyticsQueryParams) {
   return { params: query };
 }
 
+function flattenDaily(payload: any): DailyMetric[] {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  const current: DailyMetric[] = Array.isArray(payload.current) ? payload.current : [];
+  const comparison: DailyMetric[] = Array.isArray(payload.comparison) ? payload.comparison : [];
+  if (comparison.length === 0) return current;
+  const compareByDate = new Map(comparison.map(c => [c.date, c.value]));
+  return current.map(c => {
+    const compare_value = compareByDate.get(c.date);
+    return compare_value !== undefined ? { ...c, compare_value } : c;
+  });
+}
+
+function unwrapList<T>(payload: any): T[] {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload.current)) return payload.current;
+  return [];
+}
+
 export const analyticsApi = {
-  async overview(params: AnalyticsQueryParams) {
-    const { data } = await apiClient.get<ApiResponse<AnalyticsOverview>>(
+  async overview(params: AnalyticsQueryParams): Promise<AnalyticsOverview> {
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/analytics/overview',
       buildParams(params),
     );
-    return data.data;
+    const payload = data.data || {};
+    const current = payload.current || payload;
+    const comparison = payload.comparison || undefined;
+    return { ...current, ...(comparison ? { comparison } : {}) };
   },
 
-  async dailyOrders(params: AnalyticsQueryParams) {
-    const { data } = await apiClient.get<ApiResponse<DailyMetric[]>>(
+  async dailyOrders(params: AnalyticsQueryParams): Promise<DailyMetric[]> {
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/analytics/orders',
       buildParams(params),
     );
-    return data.data;
+    return flattenDaily(data.data);
   },
 
-  async dailySales(params: AnalyticsQueryParams) {
-    const { data } = await apiClient.get<ApiResponse<DailyMetric[]>>(
+  async dailySales(params: AnalyticsQueryParams): Promise<DailyMetric[]> {
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/analytics/sales',
       buildParams(params),
     );
-    return data.data;
+    return flattenDaily(data.data);
   },
 
-  async conversionRate(params: AnalyticsQueryParams) {
-    const { data } = await apiClient.get<ApiResponse<DailyMetric[]>>(
+  async conversionRate(params: AnalyticsQueryParams): Promise<DailyMetric[]> {
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/analytics/conversion-rate',
       buildParams(params),
     );
-    return data.data;
+    return flattenDaily(data.data);
   },
 
-  async activeUsers(params: AnalyticsQueryParams) {
-    const { data } = await apiClient.get<ApiResponse<DailyMetric[]>>(
+  async activeUsers(params: AnalyticsQueryParams): Promise<DailyMetric[]> {
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/analytics/active-users',
       buildParams(params),
     );
-    return data.data;
+    return flattenDaily(data.data);
   },
 
-  async newUsers(params: AnalyticsQueryParams) {
-    const { data } = await apiClient.get<ApiResponse<DailyMetric[]>>(
+  async newUsers(params: AnalyticsQueryParams): Promise<DailyMetric[]> {
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/analytics/new-users',
       buildParams(params),
     );
-    return data.data;
+    return flattenDaily(data.data);
   },
 
-  async dailySessions(params: AnalyticsQueryParams) {
-    const { data } = await apiClient.get<ApiResponse<DailyMetric[]>>(
+  async dailySessions(params: AnalyticsQueryParams): Promise<DailyMetric[]> {
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/analytics/sessions',
       buildParams(params),
     );
-    return data.data;
+    return flattenDaily(data.data);
   },
 
-  async appInstalls(params: AnalyticsQueryParams) {
-    const { data } = await apiClient.get<ApiResponse<AppInstallData[]>>(
+  async appInstalls(params: AnalyticsQueryParams): Promise<AppInstallData[]> {
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/analytics/app-installs',
       buildParams(params),
     );
-    return data.data;
+    return unwrapList<AppInstallData>(data.data);
   },
 
-  async topSources(params: AnalyticsQueryParams) {
-    const { data } = await apiClient.get<ApiResponse<TopSource[]>>(
+  async topSources(params: AnalyticsQueryParams): Promise<TopSource[]> {
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/analytics/top-sources',
       buildParams(params),
     );
-    return data.data;
+    return unwrapList<TopSource>(data.data);
   },
 
-  async topDiscounts(params: AnalyticsQueryParams) {
-    const { data } = await apiClient.get<ApiResponse<TopDiscount[]>>(
+  async topDiscounts(params: AnalyticsQueryParams): Promise<TopDiscount[]> {
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/analytics/top-discounts',
       buildParams(params),
     );
-    return data.data;
+    return unwrapList<TopDiscount>(data.data);
   },
 
-  async pushInsights(params: AnalyticsQueryParams) {
-    const { data } = await apiClient.get<ApiResponse<PushInsight[]>>(
+  async pushInsights(params: AnalyticsQueryParams): Promise<PushInsight[]> {
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/analytics/push-insights',
       buildParams(params),
     );
-    return data.data;
+    return unwrapList<PushInsight>(data.data);
   },
 
-  async automatedPushInsights(params: AnalyticsQueryParams) {
-    const { data } = await apiClient.get<ApiResponse<PushInsight[]>>(
+  async automatedPushInsights(params: AnalyticsQueryParams): Promise<PushInsight[]> {
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/analytics/automated-push',
       buildParams(params),
     );
-    return data.data;
+    return unwrapList<PushInsight>(data.data);
   },
 
-  async conversionFunnel(params: AnalyticsQueryParams) {
-    const { data } = await apiClient.get<ApiResponse<ConversionFunnelStep[]>>(
+  async conversionFunnel(params: AnalyticsQueryParams): Promise<ConversionFunnelStep[]> {
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/analytics/conversion-funnel',
       buildParams(params),
     );
-    return data.data;
+    return unwrapList<ConversionFunnelStep>(data.data);
   },
 
-  async topProducts(params: AnalyticsQueryParams) {
-    const { data } = await apiClient.get<ApiResponse<TopProduct[]>>(
+  async topProducts(params: AnalyticsQueryParams): Promise<TopProduct[]> {
+    const { data } = await apiClient.get<ApiResponse<any>>(
       '/analytics/top-products',
       buildParams(params),
     );
-    return data.data;
+    return unwrapList<TopProduct>(data.data);
   },
 
   async trackEvent(event: {
