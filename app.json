@@ -1,4 +1,9 @@
 {
   "name": "AppEngineX",
-  "displayName": "AppEngineX"
+  "displayName": "AppEngineX",
+  "extra": {
+    "eas": {
+      "projectId": "a78ede9a-13b5-40cf-9e9d-f0a1afb5fb1c"
+    }
+  }
 }
