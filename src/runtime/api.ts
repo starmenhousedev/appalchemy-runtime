@@ -29,6 +29,11 @@ export interface RuntimeTheme {
   productSorting?: { order: string };
   productLabels?: unknown[];
   cartGoals?: unknown[];
+  // GID of the merchant's Mobile App Publication on Shopify. Present once
+  // the merchant's app-alchemy install has run the publicationCreate
+  // step. Future phases will use this to scope product queries; for now
+  // it's exposed for diagnostics and forward-compat.
+  mobilePublication?: { id: string };
 }
 
 const CACHE_KEY = "@appalchemy/theme";
