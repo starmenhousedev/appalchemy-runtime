@@ -31,6 +31,10 @@ const stackOptions: StackNavigationOptions = {
 
 // Each tab in the bottom bar gets its own stack so deep navigation in
 // (e.g.) the Home tab doesn't pop the user out of that tab.
+//
+// Page screens set their own title from inside the component via
+// navigation.setOptions — the old options callback called a hook
+// (useTheme), which violates the rules of hooks.
 function TabStack({ initialPageId }: { initialPageId: number }) {
   return (
     <Stack.Navigator screenOptions={stackOptions}>
@@ -38,10 +42,6 @@ function TabStack({ initialPageId }: { initialPageId: number }) {
         name="Page"
         component={PageScreen}
         initialParams={{ pageId: initialPageId }}
-        options={({ route }) => {
-          const pageId = (route.params as { pageId?: number } | undefined)?.pageId;
-          return { title: usePageTitle(pageId) };
-        }}
       />
       <Stack.Screen
         name="ProductDetail"
@@ -65,13 +65,6 @@ function TabStack({ initialPageId }: { initialPageId: number }) {
       />
     </Stack.Navigator>
   );
-}
-
-// Read page title from theme. Has to be a hook so it re-runs when theme refreshes.
-function usePageTitle(pageId: number | undefined): string {
-  const { theme } = useTheme();
-  if (pageId === undefined || !theme) return "";
-  return theme.pages.find((p) => p.id === pageId)?.title ?? "";
 }
 
 export function RuntimeNavigator() {
