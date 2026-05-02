@@ -1,6 +1,15 @@
-import React from "react";
-import { Image, Text, useWindowDimensions, View } from "react-native";
+import React, { useState } from "react";
+import {
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import Video, { type VideoRef } from "react-native-video";
 import type { Section } from "../types";
+import { useNavigateToLink } from "../navigation/useNavigateToLink";
 
 type VideoBannerSection = Extract<Section, { type: "video_banner" }>;
 
@@ -11,28 +20,61 @@ const ASPECT_RATIOS: Record<string, number> = {
   "9:16": 9 / 16,
 };
 
-// Real video playback needs `expo-av` or `react-native-video`. Until that
-// dep is wired, render the poster image (or a stub) at the configured
-// aspect ratio so the layout is correct.
 export function VideoBanner({ section }: { section: VideoBannerSection }) {
   const { width } = useWindowDimensions();
   const ratio = ASPECT_RATIOS[section.config.aspectRatio] ?? 16 / 9;
   const height = width / ratio;
-  const poster = section.config.video.poster;
+  const { video, autoplay, muted, loop } = section.config;
+  const navigateToLink = useNavigateToLink();
+  const [posterVisible, setPosterVisible] = useState(true);
+  const [errored, setErrored] = useState(false);
 
-  return (
-    <View style={{ width, height, backgroundColor: "#000" }}>
-      {poster ? (
+  const ref = React.useRef<VideoRef>(null);
+
+  const content = (
+    <View style={[styles.container, { width, height }]}>
+      {!errored && (
+        <Video
+          ref={ref}
+          source={{ uri: video.url }}
+          style={[StyleSheet.absoluteFill, { width, height }]}
+          paused={!autoplay}
+          muted={muted}
+          repeat={loop}
+          resizeMode="cover"
+          controls={!autoplay}
+          onReadyForDisplay={() => setPosterVisible(false)}
+          onError={() => setErrored(true)}
+          ignoreSilentSwitch="ignore"
+          playInBackground={false}
+        />
+      )}
+      {(posterVisible || errored) && video.poster && (
         <Image
-          source={{ uri: poster }}
-          style={{ width, height }}
+          source={{ uri: video.poster }}
+          style={[StyleSheet.absoluteFill, { width, height }]}
           resizeMode="cover"
         />
-      ) : (
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-          <Text style={{ color: "#fff", opacity: 0.6 }}>▶ Video</Text>
+      )}
+      {(posterVisible || errored) && !video.poster && (
+        <View style={[StyleSheet.absoluteFill, styles.placeholder]}>
+          <Text style={styles.placeholderText}>▶ Video</Text>
         </View>
       )}
     </View>
   );
+
+  const link = video.link;
+  if (link && link.kind !== "none") {
+    return (
+      <Pressable onPress={() => navigateToLink(link)}>{content}</Pressable>
+    );
+  }
+  return content;
 }
+
+const styles = StyleSheet.create({
+  container: { backgroundColor: "#000", overflow: "hidden" },
+  placeholder: { justifyContent: "center", alignItems: "center" },
+  placeholderText: { color: "#fff", opacity: 0.6 },
+});
