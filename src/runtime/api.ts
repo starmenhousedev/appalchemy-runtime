@@ -31,8 +31,11 @@ export interface RuntimeTheme {
   cartGoals?: unknown[];
   // GID of the merchant's Mobile App Publication on Shopify. Present once
   // the merchant's app-alchemy install has run the publicationCreate
-  // step. Future phases will use this to scope product queries; for now
-  // it's exposed for diagnostics and forward-compat.
+  // step. Stored for forward-compat; v1 deliberately does NOT enforce
+  // publication membership in runtime product queries (Path C). See
+  // app/lib/mobile-publication.server.ts in the builder repo for the
+  // full reasoning. Product visibility in v1 is controlled per section
+  // by the collection or tag the merchant picks in the builder.
   mobilePublication?: { id: string };
 }
 

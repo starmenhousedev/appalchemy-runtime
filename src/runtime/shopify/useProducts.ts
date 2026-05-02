@@ -1,3 +1,14 @@
+// Hook for product sections (ProductGrid, ProductList, Carousel,
+// RecentlyViewed, WishlistedItems, TabbedProductList). Calls Shopify
+// Storefront API directly using the merchant's Online Store storefront
+// token from RUNTIME_CONFIG.
+//
+// V1 does NOT filter results by the merchant's Mobile App Publication —
+// see RuntimeTheme.mobilePublication doc in ../api.ts and the builder's
+// app/lib/mobile-publication.server.ts for the full reasoning. Product
+// visibility is controlled per-section by the source the merchant picks
+// in the builder (collection / tag / manual handle list).
+
 import { useEffect, useState } from "react";
 import type { ProductSortKey, ProductSource } from "../types";
 import { storefrontQuery } from "./client";
