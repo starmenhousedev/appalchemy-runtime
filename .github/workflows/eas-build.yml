@@ -127,13 +127,24 @@ jobs:
           fi
           ANDROID_URL="${{ steps.wait.outputs.android_url }}"
           IOS_URL="${{ steps.wait.outputs.ios_url }}"
+          PROFILE="${{ steps.inputs.outputs.profile }}"
+          # Map the Android artifact to the right webhook field by profile.
+          # preview profile emits an APK (sideloadable, downloadable from
+          # the merchant Publish UI). production emits an AAB (Play
+          # Store upload only). The backend webhook accepts both keys.
+          if [ "$PROFILE" = "preview" ]; then
+            ANDROID_KEY="apk_url"
+          else
+            ANDROID_KEY="aab_url"
+          fi
           curl -fsS -X POST "${{ secrets.APPENGINE_API_BASE }}/api/webhooks/build-status" \
             -H "Content-Type: application/json" \
             -H "X-Webhook-Token: ${{ secrets.APPENGINE_WEBHOOK_TOKEN }}" \
             -d "$(jq -n \
               --arg build_id "${{ steps.inputs.outputs.build_id }}" \
               --arg status "$STATUS" \
+              --arg android_key "$ANDROID_KEY" \
               --arg android_url "$ANDROID_URL" \
               --arg ios_url "$IOS_URL" \
               --arg run_url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-              '{build_id:$build_id,status:$status,android_url:$android_url,ios_url:$ios_url,github_run_url:$run_url}')"
+              '{build_id:$build_id,status:$status,($android_key):$android_url,ios_url:$ios_url,github_run_url:$run_url}')"
