@@ -1,9 +1,12 @@
 {
-  "name": "appalchemy-runtime",
-  "displayName": "AppAlchemy Runtime",
-  "extra": {
-    "eas": {
-      "projectId": "a78ede9a-13b5-40cf-9e9d-f0a1afb5fb1c"
+  "expo": {
+    "name": "AppAlchemy Runtime",
+    "slug": "appenginex",
+    "displayName": "AppAlchemy Runtime",
+    "extra": {
+      "eas": {
+        "projectId": "a78ede9a-13b5-40cf-9e9d-f0a1afb5fb1c"
+      }
     }
   }
 }
